@@ -9,6 +9,7 @@ from selenium import webdriver
 from time import sleep
 import pytesseract
 import cv2
+import re
 
 current_date_time = datetime.now()
 print('Start:', current_date_time)
@@ -18,6 +19,7 @@ source_path = 'C:\\Users\\knapekoz\\OneDrive - health.gov.sk\\\Zverejnovanie zml
 data_path = os.getcwd() + "\\data\\"
 vo_path = "C:\\Users\\knapekoz\\health.gov.sk\\OSCM - Posudzovanie žiadostí\\"
 chromedriver_path = os.path.join(vo_path, 'chromedriver_win32/chromedriver.exe')
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 if not os.path.exists(data_path):
     os.mkdir(data_path)
@@ -101,11 +103,26 @@ driver.save_screenshot("image.png")
 
 img = cv2.imread('image.png')
 
-# preprocessing
-#gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-#invert = 255 - gray
+#preprocessing
+def resizing_image(img, scale_percent:int):
+    width = int(img.shape[1] * scale_percent / 100)
+    height = int(img.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    return cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-text = pytesseract.image_to_string(img)
+def thresholding(image):
+    return cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
+
+resized = resizing_image(img, scale_percent=220)
+gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+thresh = thresholding(gray)
+
+#cropped_image = thresh[0:900, 0:2500]
+#cv2.imwrite('image_cropped.png', cropped_image)
+
+text = pytesseract.image_to_string(thresh, config='--psm 6')
+
+code = re.findall('\d{5}', text)[-1]
+print(code)
 
