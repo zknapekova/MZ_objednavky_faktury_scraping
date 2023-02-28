@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import functionss as func
 import os
 from urllib.request import build_opener, install_opener, urlretrieve, urlopen
@@ -10,6 +11,28 @@ from time import sleep
 import pytesseract
 import cv2
 import re
+
+def preprocess_image(img, resize={'apply':True, 'scale_percent':220}, gray_scale=True, thresholding={'apply': True, 'threshold':0}, denoise={'apply':True, 'h':3, 'templateWindowSize':7, 'searchWindowSize':21},
+                     sharpen={'apply':True}):
+    if resize['apply']:
+        width = int(img.shape[1] * resize['scale_percent'] / 100)
+        height = int(img.shape[0] * resize['scale_percent'] / 100)
+        dim = (width, height)
+        img = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+    if gray_scale:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if thresholding['apply']:
+        img = cv2.threshold(img, thresholding['threshold'], 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    if denoise['apply']:
+        if gray_scale:
+            img = cv2.fastNlMeansDenoising(src=img, h=denoise['h'], templateWindowSize=denoise['templateWindowSize'], searchWindowSize=denoise['searchWindowSize'])
+        else:
+            img = cv2.fastNlMeansDenoisingColored(src=img, h=denoise['h'], templateWindowSize=denoise['templateWindowSize'], searchWindowSize=denoise['searchWindowSize'])
+    if sharpen['apply']:
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]]) # using sharpen kernel https://en.wikipedia.org/wiki/Kernel_(image_processing)
+        img = cv2.filter2D(img, -1, kernel)
+    return img
+
 
 current_date_time = datetime.now()
 print('Start:', current_date_time)
@@ -101,28 +124,12 @@ driver = webdriver.Chrome(chromedriver_path, options=options)
 driver.get(dict['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica']['objednavky_faktury_link'])
 driver.save_screenshot("image.png")
 
-img = cv2.imread('image.png')
+image = cv2.imread('img2.png')
+result = preprocess_image(image)
 
-#preprocessing
-def resizing_image(img, scale_percent:int):
-    width = int(img.shape[1] * scale_percent / 100)
-    height = int(img.shape[0] * scale_percent / 100)
-    dim = (width, height)
-    return cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+text = pytesseract.image_to_string(result, config='--psm 6')
+# TODO - check easyocr package
 
-def thresholding(image):
-    return cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-
-
-resized = resizing_image(img, scale_percent=220)
-gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-thresh = thresholding(gray)
-
-#cropped_image = thresh[0:900, 0:2500]
-#cv2.imwrite('image_cropped.png', cropped_image)
-
-text = pytesseract.image_to_string(thresh, config='--psm 6')
-
-code = re.findall('\d{5}', text)[-1]
+code = re.findall('\d{5}', text)
 print(code)
 
