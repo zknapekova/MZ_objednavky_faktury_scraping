@@ -5,11 +5,12 @@ import os
 from urllib.request import build_opener, install_opener, urlretrieve
 from datetime import datetime
 # import gdown
-import tabula
 import camelot
 import re
 from functions_ZK import *
 from config import *
+from get_outlook_emails import OutlookTools
+import win32com.client
 
 current_date_time = datetime.now()
 print('Start:', current_date_time)
@@ -58,14 +59,62 @@ file_name = data_path + current_date_time.strftime("%d-%m-%Y") + str(keysList[4]
 urlretrieve(dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_link'], file_name)
 
 list_of_dfs = camelot.read_pdf(file_name, pages='all')
-df_conc = pd.DataFrame(columns=list_of_dfs[0].df.iloc[0])
+cols = list_of_dfs[0].df.iloc[0]
+df_conc = pd.DataFrame(columns=list_of_dfs[0].df.columns)
 
 for i in range(len(list_of_dfs)):
-    tab = list_of_dfs[i].df
-    tab.rename(columns=tab.iloc[0], inplace=True)
-    tab.drop(tab.index[0], inplace=True)
-    df_conc = pd.concat([df_conc, tab], ignore_index=True)
+    df_conc = pd.concat([df_conc, list_of_dfs[i].df.drop(list_of_dfs[i].df.index[0], axis=0)], ignore_index=True)
+df_conc.columns = cols
 
+# data cleaning
+df_conc.columns = df_conc.columns.str.replace('\n', '')
+
+### fix overflowed values ###
+
+# fix Odhadovaná hodnota
+df_conc['extracted_values_odhad_hodnota'] = df_conc['Popis'].str.extract(r'(\d+,\d+)')
+df_conc['Odhadovaná hodnota'] = np.where(
+    (df_conc['Odhadovaná hodnota'] == '') & (df_conc['Popis'].str.match(r'.*\d+,\d+')),
+    df_conc['extracted_values_odhad_hodnota'], df_conc['Odhadovaná hodnota'])
+
+# fix Cislo zmluvy
+df_conc['extracted_values_cislo_zmluvy'] = df_conc['Dátum vyhotovenia'].str.extract(r'(^Z.+)')
+df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'^Z.+', '', regex=True)
+df_conc['Číslo zmluvy'] = np.where(
+    (df_conc['Číslo zmluvy'] == '') & (pd.isna(df_conc['extracted_values_cislo_zmluvy'])==False),
+    df_conc['extracted_values_cislo_zmluvy'], df_conc['Číslo zmluvy'])
+
+# fix Dodavatel - ico
+df_conc['extracted_values_ico'] = df_conc['Dodávateľ - adresa'].str.extract(r'(\d{8})')
+df_conc['Dodávateľ - adresa'] = df_conc['Dodávateľ - adresa'].str.replace(r'(\d{8})', '', regex=True)
+df_conc['Dodávateľ - IČO'] = np.where(
+    (df_conc['Dodávateľ - IČO'] == '') & (pd.isna(df_conc['extracted_values_ico']) == False),
+    df_conc['extracted_values_ico'], df_conc['Dodávateľ - IČO'])
+
+# fix Dodavatel-adresa
+df_conc['extracted_values_dod_adresa'] = df_conc['Dodávateľ - názov'].str.extract(r'(Pribylinsk.+)')
+df_conc['Dodávateľ - názov'] = df_conc['Dodávateľ - názov'].str.replace(r'(Pribylinsk.+)', '', regex=True)
+df_conc['Dodávateľ - adresa'] = np.where(
+    (df_conc['Dodávateľ - adresa'] == '') & (pd.isna(df_conc['extracted_values_dod_adresa']) == False),
+    df_conc['extracted_values_dod_adresa'], df_conc['Dodávateľ - adresa'])
+
+# fix Dodavatel - nazov
+df_conc['extracted_values_dod_nazov'] = df_conc['Dátum vyhotovenia'].str.extract(r'([a-zA-Z].+)')
+df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'([a-zA-Z].+)', '', regex=True)
+df_conc['Dodávateľ - názov'] = np.where((df_conc['Dodávateľ - názov']=='') & (pd.isna(df_conc['extracted_values_dod_nazov'])==False),
+                                        df_conc['extracted_values_dod_nazov'], df_conc['Dodávateľ - názov'])
+
+# fix Datum vyhotovenia
+df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'\n', '', regex=True)
+df_conc['extracted_values_dat_vyhot'] = df_conc['Dodávateľ - názov'].str.extract(r'(\d+\.\d+.\d{4})')
+df_conc['Dodávateľ - názov'] = df_conc['Dodávateľ - názov'].str.replace(r'\d+\.\d+.\d{4}', '', regex=True)
+df_conc['Dodávateľ - názov'] = df_conc['Dodávateľ - názov'].str.strip()
+
+df_conc['Dátum vyhotovenia'] = np.where(
+    ((df_conc['Dátum vyhotovenia'] == '') ) & (pd.isna(df_conc['extracted_values_dat_vyhot'])==False),
+    df_conc['extracted_values_dat_vyhot'], df_conc['Dátum vyhotovenia'])
+
+df_conc = func.clean_str_cols(df_conc)
 
 
 # 5 - Detská psychiatrická liecebna n.o. Hráň
@@ -74,8 +123,8 @@ urlretrieve(dict['detska psychiatricka liecebna n o hran']['objednavky_faktury_l
             dict['detska psychiatricka liecebna n o hran']['objednavky_faktury_file_ext'])
 
 # 6 - Fakultna nemocnica Nitra
-table = pd.read_html(dict['fakultna nemocnica nitra']['objednavky_faktury_link'])[0]
-
+df_fnnr = pd.read_html(dict['fakultna nemocnica nitra']['objednavky_faktury_link'], encoding='utf-8')[0]
+df_fnnr = func.clean_str_cols(df_fnnr)
 
 # 7 - fakultna nemocnica s poliklinikou f d roosevelta banska bystrica
 
@@ -88,33 +137,52 @@ if output[0] == 'ok':
     data = output[1]
 
 #############################################################################################################
-# Data handling
+# Data handling (from scraped data)
 #############################################################################################################
 
 cols = np.delete(df.columns.values, 0)
-objednavky_all = pd.DataFrame(columns=cols)
-
-df_conc.columns = df_conc.columns.str.replace('\r', ' ')
-df_conc.columns = df_conc.columns.str.replace('vyhotoveni a', 'vyhotovenia')
-
-# insert scraped data
-for i in objednavky_all.columns.values:
-    for j in range(len(df_conc.columns.values)):
-        if dict['detska fakultna nemocnica s poliklinikou banska bystrica'][i] == df_conc.columns.values[j]:
-            print(dict['detska fakultna nemocnica s poliklinikou banska bystrica'][i], df_conc.columns.values[j])
-            objednavky_all[i] = df_conc[df_conc.columns[j]]
-
-# insert data from dictionary
+# columns from dictionary
 columns_to_insert = ['100percent', 'financovaneMZSR', 'spoluzakladatelNO', 'VUC', 'emaevo', 'nazov 2022',
                      'riaditeliaMAIL_2022', 'zaujem_co_liekov', 'poznamky', 'chceme', 'zverejnovanie_objednavok_faktur_rozne', 'nazov']
 
-for col_name in objednavky_all.columns.values:
-    if col_name in columns_to_insert:
-        objednavky_all[col_name]=dict['detska fakultna nemocnica s poliklinikou banska bystrica'][col_name]
+objednavky_all = pd.DataFrame(columns=cols)
+
+
+def create_standardized_table(key, table):
+    objednavky = pd.DataFrame(columns=cols)
+
+    # insert scraped data
+    for i in objednavky.columns.values:
+        for j in range(len(table.columns.values)):
+            if dict[key][i] == table.columns.values[j]:
+                print(dict[key][i], table.columns.values[j])
+                objednavky[i] = table[table.columns[j]]
+
+    # insert data from dictionary
+    for col_name in objednavky.columns.values:
+        if col_name in columns_to_insert:
+            objednavky[col_name]=dict[key][col_name]
+
+    return objednavky
+
+
+objednavky_all = pd.concat([objednavky_all, create_standardized_table('detska fakultna nemocnica s poliklinikou banska bystrica', df_conc)], ignore_index=True)
+objednavky_all = pd.concat([objednavky_all, create_standardized_table('fakultna nemocnica nitra', df_fnnr)], ignore_index=True)
+
 
 # insert last update date
 objednavky_all['insert_date'] = datetime.now()
 objednavky_all.to_excel('output.xlsx')
 
 
-# cleaning data
+#############################################################################################################
+# Data handling (from mails)
+#############################################################################################################
+
+# search for
+outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+otl = OutlookTools(outlook)
+
+otl.show_all_folders()
+path = outlook.Folders['zuzana.knapekova@health.gov.sk'].Folders['Doručená pošta']
+path = outlook.Folders['obstaravanie@health.gov.sk'].Folders['Priame objednávky']
