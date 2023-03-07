@@ -1,15 +1,14 @@
 import win32com.client  # pywin32 package needs to be installed
 import os
-outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
 
 class OutlookTools:
-    def __init__(self, outlook_object):
-        self.obj = outlook_object
-        self.n_folders = outlook_object.Folders.Count
+    def __init__(self, object):
+        self.obj = object
+        self.n_folders = self.obj.Folders.Count
 
     def show_all_folders(self):
-        for i in range(1, self.n_folders):
+        for i in range(0, self.n_folders):
             print(f'Folder: [{i}] {self.obj.Folders[i].Name}')
             n_subfolders = self.obj.Folders[i].Folders.Count
             for j in range(n_subfolders):
@@ -25,10 +24,10 @@ class OutlookTools:
         :param condition: possible filters to use: subject, sender, to, body, receivedtime etc.
         :return: item object with filtered messages
         '''
-        messages_all = path.Items
+        messages_all = folder_path.Items
         return messages_all.Restrict(condition)
 
-    def save_attachement(self, output_path, messages):
+    def save_attachment(self, output_path, messages):
         '''
 
         :param output_path: folder for saving attachments
@@ -44,10 +43,11 @@ class OutlookTools:
                     print("error when saving the attachment:" + str(e))
         print('All atachments were saved')
 
-
-path = outlook.Folders['zuzana.knapekova@health.gov.sk'].Folders['Doručená pošta']
-result = OutlookTools(outlook).find_message(path, "[SenderName] = 'Gajdošová Denisa'")
-OutlookTools(outlook).save_attachement(os.getcwd(), result)
+# Example of use:
+#path = outlook.Folders['zuzana.knapekova@health.gov.sk'].Folders['Doručená pošta']
+#OT = OutlookTools(outlook)
+#result = OT.find_message(path, "[SenderName] = 'Gajdošová Denisa'")
+#OutlookTools(outlook).save_attachement(os.getcwd(), result)
 
 # Useful links:
 # another way of getting inbox folder - https://learn.microsoft.com/en-us/office/vba/api/outlook.oldefaultfolders

@@ -12,6 +12,7 @@ import re
 from config import *
 from datetime import datetime
 from unidecode import unidecode
+import ezodf
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -181,3 +182,30 @@ def FNsP_BB_objednavky(link:str, search_by: str, value: str, name: str):
 
     driver.quit()
     return ['ok', result_df]
+
+def create_standardized_table(key, table, cols, columns_to_insert):
+    '''
+
+    :param key: name of the hospital/institution used in dictionary
+    :param table: dataframe containing data
+    :param cols: list of columns to be used in the result table
+    :param columns_to_insert: values from dictionary
+    :return: pandas dataframe
+    '''
+    objednavky = pd.DataFrame(columns=cols)
+
+    # insert scraped data
+    for i in objednavky.columns.values:
+        for j in range(len(table.columns.values)):
+            if dict[key][i] == table.columns.values[j]:
+                print(dict[key][i], table.columns.values[j])
+                objednavky[i] = table[table.columns[j]]
+
+    # insert data from dictionary
+    for col_name in objednavky.columns.values:
+        if col_name in columns_to_insert:
+            objednavky[col_name]=dict[key][col_name]
+
+    return objednavky
+
+

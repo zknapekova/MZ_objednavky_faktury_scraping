@@ -148,26 +148,8 @@ columns_to_insert = ['100percent', 'financovaneMZSR', 'spoluzakladatelNO', 'VUC'
 objednavky_all = pd.DataFrame(columns=cols)
 
 
-def create_standardized_table(key, table):
-    objednavky = pd.DataFrame(columns=cols)
-
-    # insert scraped data
-    for i in objednavky.columns.values:
-        for j in range(len(table.columns.values)):
-            if dict[key][i] == table.columns.values[j]:
-                print(dict[key][i], table.columns.values[j])
-                objednavky[i] = table[table.columns[j]]
-
-    # insert data from dictionary
-    for col_name in objednavky.columns.values:
-        if col_name in columns_to_insert:
-            objednavky[col_name]=dict[key][col_name]
-
-    return objednavky
-
-
-objednavky_all = pd.concat([objednavky_all, create_standardized_table('detska fakultna nemocnica s poliklinikou banska bystrica', df_conc)], ignore_index=True)
-objednavky_all = pd.concat([objednavky_all, create_standardized_table('fakultna nemocnica nitra', df_fnnr)], ignore_index=True)
+objednavky_all = pd.concat([objednavky_all, create_standardized_table('detska fakultna nemocnica s poliklinikou banska bystrica', df_conc, cols, columns_to_insert)], ignore_index=True)
+objednavky_all = pd.concat([objednavky_all, create_standardized_table('fakultna nemocnica nitra', df_fnnr, cols, columns_to_insert)], ignore_index=True)
 
 
 # insert last update date
@@ -179,10 +161,56 @@ objednavky_all.to_excel('output.xlsx')
 # Data handling (from mails)
 #############################################################################################################
 
-# search for
 outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 otl = OutlookTools(outlook)
 
-otl.show_all_folders()
-path = outlook.Folders['zuzana.knapekova@health.gov.sk'].Folders['Doručená pošta']
-path = outlook.Folders['obstaravanie@health.gov.sk'].Folders['Priame objednávky']
+path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
+
+# FNsPZA
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%fnspza.sk' ")
+hosp_path = data_path + "fnspza\\"
+otl.save_attachement(hosp_path, search_result)
+
+# load downloaded folders
+all_tables = []
+for file_name in os.listdir(hosp_path):
+    print(file_name)
+    if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg'):
+        continue
+    elif file_name.split(sep='.')[-1] == 'ods':
+        df = pd.read_excel(os.path.join(hosp_path, file_name), engine='odf', sheet_name= None)
+    else:
+        df = func.load_df(name=file_name, path=hosp_path, sheet_name= None)
+    all_tables.append([file_name, df])
+
+# remove rows outside of table
+for i in range(len(all_tables)):
+    print(all_tables[i][0])
+    doc = all_tables[i][-1]
+    for key, value in doc.items():
+        if any(s in '|'.join(map(str, doc[key].columns)) for s in ('Unnamed', 'nan')):
+            doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns)/3)).reset_index(drop=True)
+            doc[key] = doc[key].dropna(axis=1, how='all')
+            doc[key].columns = doc[key].columns.replace('\n', '')
+            if not doc[key].empty:
+                doc[key].columns = doc[key].iloc[0]
+                doc[key] = doc[key].drop(doc[key].index[0])
+        if not doc[key].empty:
+            all_tables[i].append(doc[key])
+            print(doc[key].columns)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
