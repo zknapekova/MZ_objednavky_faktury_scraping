@@ -208,4 +208,32 @@ def create_standardized_table(key, table, cols, columns_to_insert):
 
     return objednavky
 
+def clean_str_col_names(df):
+    df.columns = [unidecode(str(x).lower().strip().replace('\n', '')) for x in df.columns]
+    return df
+
+# def clean_table(df):
+#     df = df.dropna(axis=1, thresh=3)
+#     filtered_values = list(filter(lambda v: re.match('^Unnamed.*', v), df.columns))
+#     indices = [index for (index, item) in enumerate(df.columns.values) if item in filtered_values]
+#     for i in range(len(indices)):
+#         df.columns.values[indices[i]]=df.iloc[0][indices[i]]
+#     return df
+
+def clean_tables(input_list):
+    for i in range(len(input_list)):
+        doc = input_list[i][-1]
+        for key, value in doc.items():
+            doc[key] = doc[key].dropna(axis=1, thresh=3)
+            if ('Unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
+                doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
+                doc[key] = doc[key].dropna(axis=1, thresh=3)
+                if not doc[key].empty:
+                    doc[key].columns = doc[key].iloc[0]
+                    doc[key] = doc[key].drop(doc[key].index[0])
+            if not doc[key].empty:
+                doc[key] = clean_str_col_names(doc[key])
+                input_list[i].append(doc[key])
+    return input_list
+
 

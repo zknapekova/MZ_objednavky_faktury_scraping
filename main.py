@@ -174,43 +174,77 @@ otl.save_attachement(hosp_path, search_result)
 # load downloaded folders
 all_tables = []
 for file_name in os.listdir(hosp_path):
-    print(file_name)
     if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg'):
         continue
     elif file_name.split(sep='.')[-1] == 'ods':
-        df = pd.read_excel(os.path.join(hosp_path, file_name), engine='odf', sheet_name= None)
+        df = pd.read_excel(os.path.join(hosp_path, file_name), engine='odf', sheet_name=None)
     else:
-        df = func.load_df(name=file_name, path=hosp_path, sheet_name= None)
+        df = func.load_df(name=file_name, path=hosp_path, sheet_name=None)
     all_tables.append([file_name, df])
 
 # remove rows outside of table
-for i in range(len(all_tables)):
-    print(all_tables[i][0])
-    doc = all_tables[i][-1]
-    for key, value in doc.items():
-        if any(s in '|'.join(map(str, doc[key].columns)) for s in ('Unnamed', 'nan')):
-            doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns)/3)).reset_index(drop=True)
-            doc[key] = doc[key].dropna(axis=1, how='all')
-            doc[key].columns = doc[key].columns.replace('\n', '')
-            if not doc[key].empty:
-                doc[key].columns = doc[key].iloc[0]
-                doc[key] = doc[key].drop(doc[key].index[0])
-        if not doc[key].empty:
-            all_tables[i].append(doc[key])
-            print(doc[key].columns)
+all_tables_cleaned = clean_tables(all_tables)
+all_tables_cleaned[2][3]['sukl_kod'] = all_tables_cleaned[2][3]['sukl_kod1'].str.cat(
+    all_tables_cleaned[2][3]['kod'].astype(str), sep='')
 
 
+# lst_column_names=[]
+# file1 = open("myfile.txt","w")
+# for i in range(len(all_tables)):
+#     file1.write(f'{i} {all_tables[i][0]}\n')
+#     for j in range(2, len(all_tables[i])):
+#         file1.write(f'    {all_tables[i][j].columns.values}\n')
+#         for k in all_tables[i][j].columns.values:
+#             lst_column_names.append(k)
+# file1.close()
 
+stand_column_names = {
+    'obstaravatel_nazov': ['nazov verejneho obstaravatela'],
+    'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)',
+                  'kategoria(tovary / prace / sluzby)'],
+    'objednavka_predmet': ['nazov predmetu objednavky', 'predmet objednavky'],
+    'objednavka_hodnota_bez_DPH': ['hodnotaobjednavkyv eur bez dph', 's.nc bdph', 'hodnotaobjednavkyv eur bez dph',
+                                   'hodnota'],
+    'objednavka_datum_zadania': ['datum zadania objednavky', 'datum objednavky'],
+    'objednavka_cislo': ['c.obj.', 'cislo objednavky'],
+    'zdroj_financovania': ['zdroje financovania'],
+    'balenie': ['balenie'],
+    'sukl_kod': ['sukl_kod'],
+    'mnozstvo': ['mnozstvo'],
+    'poznamka': ['kratke zdovodnenie', 'kratke zdovodnenie2'],
+    'dodavatel_ico': ['dodavatel - ico'],
+    'dodavatel_nazov': ['dodavatel - nazov'],
+    'dodavatel_ulica': ['dodavatel - ulica'],
+    'dodavatel_psc': ['dodavatel - psc'],
+    'dodavatel_mesto_obec': ['dodavatel - mesto/obec'],
+    'dodavatel_stat': ['dodavatel - stat'],
+    'odkaz_na_zmluvu': ['odkaz na zverejnenu zmluvu'],
+    'pocet_oslovenych': ['pocet oslovenych'],
+    'pocet_prijatych_ponuk': ['pocet  prijatych ponuk']
+}
 
+fnspza_all = pd.DataFrame(columns=list(stand_column_names.keys()))
+all_tables_cleaned_copy = all_tables_cleaned
 
+for i in range(len(all_tables_cleaned_copy)):  # all excel files
+    print(i)
+    for j in range(2, len(all_tables_cleaned_copy[i])):  # all sheets
+        include = False
+        for k in range(len(all_tables_cleaned_copy[i][j].columns.values)):  # all columns
+            for key, value in stand_column_names.items():
+                if all_tables_cleaned_copy[i][j].columns.values[k] in value:
+                    include = True
+                    all_tables_cleaned_copy[i][j].columns = all_tables_cleaned_copy[i][j].columns.str.replace(
+                        all_tables_cleaned_copy[i][j].columns.values[k], key, regex=False)
+            if all_tables_cleaned_copy[i][j].columns.values[k] not in stand_column_names.keys():
+                all_tables_cleaned_copy[i][j].drop(all_tables_cleaned_copy[i][j].columns.values[k], axis=1,
+                                                   inplace=True)
+        print(include)
+        if include:
+            df = all_tables_cleaned_copy[i][j].reset_index(drop=True)
+            fnspza_all = pd.concat([fnspza_all, df], ignore_index=True)
 
+fnspza_all2 = func.clean_str_cols(fnspza_all)
+fnspza_all2.to_excel('output.xlsx')
 
-
-
-
-
-
-
-
-
-
+tab = all_tables_cleaned_copy[0][2]
