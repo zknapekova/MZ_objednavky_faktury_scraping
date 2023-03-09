@@ -13,6 +13,7 @@ from config import *
 from datetime import datetime
 from unidecode import unidecode
 import ezodf
+import functionss as func
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -220,6 +221,26 @@ def clean_str_col_names(df):
 #         df.columns.values[indices[i]]=df.iloc[0][indices[i]]
 #     return df
 
+def load_files(data_path):
+    '''
+    :param data_path: path to folder
+    :return: list with name of file and dictionary containing data from all sheets
+    '''
+    # load downloaded files
+    loading_start = datetime.now()
+    print('Loading start: ', datetime.now())
+    all_tables = []
+    for file_name in os.listdir(data_path):
+        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg'):
+            continue
+        elif file_name.split(sep='.')[-1] == 'ods':
+            df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
+        else:
+            df = func.load_df(name=file_name, path=data_path, sheet_name=None)
+        all_tables.append([file_name, df])
+    print('Loading took: ', datetime.now()-loading_start)
+    return all_tables
+
 def clean_tables(input_list):
     for i in range(len(input_list)):
         doc = input_list[i][-1]
@@ -236,4 +257,23 @@ def clean_tables(input_list):
                 input_list[i].append(doc[key])
     return input_list
 
-
+def create_table(list_of_tables, dictionary):
+    final_table = pd.DataFrame(columns=list(dictionary.keys()))
+    for i in range(len(list_of_tables)):  # all excel files
+        print(i)
+        for j in range(2, len(list_of_tables[i])):  # all sheets
+            include = False
+            for k in range(len(list_of_tables[i][j].columns.values)):  # all columns
+                for key, value in dictionary.items():
+                    if list_of_tables[i][j].columns.values[k] in value:
+                        include = True
+                        list_of_tables[i][j].columns = list_of_tables[i][j].columns.str.replace(
+                            list_of_tables[i][j].columns.values[k], key, regex=False)
+            print(include)
+            if include:
+                df = list_of_tables[i][j].reset_index(drop=True)
+                df['zdrojovy_dokument'] = list_of_tables[i][0]
+                df['insert_date'] = datetime.now()
+                cols = list(set(list_of_tables[i][j].columns.values).intersection(final_table.columns.values))+['zdrojovy_dokument', 'insert_date']
+                final_table = pd.concat([final_table, df[cols]], ignore_index=True)
+    return final_table

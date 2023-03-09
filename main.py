@@ -17,7 +17,7 @@ print('Start:', current_date_time)
 
 # load excel and create dictionary
 df = func.load_df(source_path)
-df['nazov']=df['Nazov_full']
+df['nazov'] = df['Nazov_full']
 
 # clean data
 df = func.clean_str_cols(df, cols=['Nazov_full'])
@@ -81,7 +81,7 @@ df_conc['Odhadovaná hodnota'] = np.where(
 df_conc['extracted_values_cislo_zmluvy'] = df_conc['Dátum vyhotovenia'].str.extract(r'(^Z.+)')
 df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'^Z.+', '', regex=True)
 df_conc['Číslo zmluvy'] = np.where(
-    (df_conc['Číslo zmluvy'] == '') & (pd.isna(df_conc['extracted_values_cislo_zmluvy'])==False),
+    (df_conc['Číslo zmluvy'] == '') & (pd.isna(df_conc['extracted_values_cislo_zmluvy']) == False),
     df_conc['extracted_values_cislo_zmluvy'], df_conc['Číslo zmluvy'])
 
 # fix Dodavatel - ico
@@ -101,8 +101,9 @@ df_conc['Dodávateľ - adresa'] = np.where(
 # fix Dodavatel - nazov
 df_conc['extracted_values_dod_nazov'] = df_conc['Dátum vyhotovenia'].str.extract(r'([a-zA-Z].+)')
 df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'([a-zA-Z].+)', '', regex=True)
-df_conc['Dodávateľ - názov'] = np.where((df_conc['Dodávateľ - názov']=='') & (pd.isna(df_conc['extracted_values_dod_nazov'])==False),
-                                        df_conc['extracted_values_dod_nazov'], df_conc['Dodávateľ - názov'])
+df_conc['Dodávateľ - názov'] = np.where(
+    (df_conc['Dodávateľ - názov'] == '') & (pd.isna(df_conc['extracted_values_dod_nazov']) == False),
+    df_conc['extracted_values_dod_nazov'], df_conc['Dodávateľ - názov'])
 
 # fix Datum vyhotovenia
 df_conc['Dátum vyhotovenia'] = df_conc['Dátum vyhotovenia'].str.replace(r'\n', '', regex=True)
@@ -111,11 +112,10 @@ df_conc['Dodávateľ - názov'] = df_conc['Dodávateľ - názov'].str.replace(r'
 df_conc['Dodávateľ - názov'] = df_conc['Dodávateľ - názov'].str.strip()
 
 df_conc['Dátum vyhotovenia'] = np.where(
-    ((df_conc['Dátum vyhotovenia'] == '') ) & (pd.isna(df_conc['extracted_values_dat_vyhot'])==False),
+    ((df_conc['Dátum vyhotovenia'] == '')) & (pd.isna(df_conc['extracted_values_dat_vyhot']) == False),
     df_conc['extracted_values_dat_vyhot'], df_conc['Dátum vyhotovenia'])
 
 df_conc = func.clean_str_cols(df_conc)
-
 
 # 5 - Detská psychiatrická liecebna n.o. Hráň
 urlretrieve(dict['detska psychiatricka liecebna n o hran']['objednavky_faktury_link'],
@@ -128,8 +128,9 @@ df_fnnr = func.clean_str_cols(df_fnnr)
 
 # 7 - fakultna nemocnica s poliklinikou f d roosevelta banska bystrica
 
-output = FNsP_BB_objednavky(link=dict['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica']['objednavky_faktury_link'],
-                            search_by='nazov_dodavatela', value='Intermedical s.r.o.', name=str(keysList[7]).replace(" ", "_"))
+output = FNsP_BB_objednavky(
+    link=dict['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica']['objednavky_faktury_link'],
+    search_by='nazov_dodavatela', value='Intermedical s.r.o.', name=str(keysList[7]).replace(" ", "_"))
 if output[0] == 'fail':
     print('First attempt failed. Trying again.')
     output = FNsP_BB_objednavky()
@@ -143,19 +144,21 @@ if output[0] == 'ok':
 cols = np.delete(df.columns.values, 0)
 # columns from dictionary
 columns_to_insert = ['100percent', 'financovaneMZSR', 'spoluzakladatelNO', 'VUC', 'emaevo', 'nazov 2022',
-                     'riaditeliaMAIL_2022', 'zaujem_co_liekov', 'poznamky', 'chceme', 'zverejnovanie_objednavok_faktur_rozne', 'nazov']
+                     'riaditeliaMAIL_2022', 'zaujem_co_liekov', 'poznamky', 'chceme',
+                     'zverejnovanie_objednavok_faktur_rozne', 'nazov']
 
 objednavky_all = pd.DataFrame(columns=cols)
 
-
-objednavky_all = pd.concat([objednavky_all, create_standardized_table('detska fakultna nemocnica s poliklinikou banska bystrica', df_conc, cols, columns_to_insert)], ignore_index=True)
-objednavky_all = pd.concat([objednavky_all, create_standardized_table('fakultna nemocnica nitra', df_fnnr, cols, columns_to_insert)], ignore_index=True)
-
+objednavky_all = pd.concat([objednavky_all,
+                            create_standardized_table('detska fakultna nemocnica s poliklinikou banska bystrica',
+                                                      df_conc, cols, columns_to_insert)], ignore_index=True)
+objednavky_all = pd.concat(
+    [objednavky_all, create_standardized_table('fakultna nemocnica nitra', df_fnnr, cols, columns_to_insert)],
+    ignore_index=True)
 
 # insert last update date
 objednavky_all['insert_date'] = datetime.now()
 objednavky_all.to_excel('output.xlsx')
-
 
 #############################################################################################################
 # Data handling (from mails)
@@ -166,37 +169,7 @@ otl = OutlookTools(outlook)
 
 path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
 
-# FNsPZA
-search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%fnspza.sk' ")
-hosp_path = data_path + "fnspza\\"
-otl.save_attachement(hosp_path, search_result)
-
-# load downloaded folders
-all_tables = []
-for file_name in os.listdir(hosp_path):
-    if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg'):
-        continue
-    elif file_name.split(sep='.')[-1] == 'ods':
-        df = pd.read_excel(os.path.join(hosp_path, file_name), engine='odf', sheet_name=None)
-    else:
-        df = func.load_df(name=file_name, path=hosp_path, sheet_name=None)
-    all_tables.append([file_name, df])
-
-# remove rows outside of table
-all_tables_cleaned = clean_tables(all_tables)
-all_tables_cleaned[2][3]['sukl_kod'] = all_tables_cleaned[2][3]['sukl_kod1'].str.cat(
-    all_tables_cleaned[2][3]['kod'].astype(str), sep='')
-
-
-# lst_column_names=[]
-# file1 = open("myfile.txt","w")
-# for i in range(len(all_tables)):
-#     file1.write(f'{i} {all_tables[i][0]}\n')
-#     for j in range(2, len(all_tables[i])):
-#         file1.write(f'    {all_tables[i][j].columns.values}\n')
-#         for k in all_tables[i][j].columns.values:
-#             lst_column_names.append(k)
-# file1.close()
+### FNsPZA ###
 
 stand_column_names = {
     'obstaravatel_nazov': ['nazov verejneho obstaravatela'],
@@ -223,28 +196,47 @@ stand_column_names = {
     'pocet_prijatych_ponuk': ['pocet  prijatych ponuk']
 }
 
-fnspza_all = pd.DataFrame(columns=list(stand_column_names.keys()))
-all_tables_cleaned_copy = all_tables_cleaned
+# download all attachements available from outlook
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%fnspza.sk' ")
+hosp_path = data_path + "fnspza\\"
+otl.save_attachement(hosp_path, search_result)
 
-for i in range(len(all_tables_cleaned_copy)):  # all excel files
-    print(i)
-    for j in range(2, len(all_tables_cleaned_copy[i])):  # all sheets
-        include = False
-        for k in range(len(all_tables_cleaned_copy[i][j].columns.values)):  # all columns
-            for key, value in stand_column_names.items():
-                if all_tables_cleaned_copy[i][j].columns.values[k] in value:
-                    include = True
-                    all_tables_cleaned_copy[i][j].columns = all_tables_cleaned_copy[i][j].columns.str.replace(
-                        all_tables_cleaned_copy[i][j].columns.values[k], key, regex=False)
-            if all_tables_cleaned_copy[i][j].columns.values[k] not in stand_column_names.keys():
-                all_tables_cleaned_copy[i][j].drop(all_tables_cleaned_copy[i][j].columns.values[k], axis=1,
-                                                   inplace=True)
-        print(include)
-        if include:
-            df = all_tables_cleaned_copy[i][j].reset_index(drop=True)
-            fnspza_all = pd.concat([fnspza_all, df], ignore_index=True)
+all_tables = load_files(hosp_path)
 
+# remove rows outside of table
+all_tables_cleaned = clean_tables(all_tables)
+all_tables_cleaned[2][3]['sukl_kod'] = all_tables_cleaned[2][3]['sukl_kod1'].str.cat(
+    all_tables_cleaned[2][3]['kod'].astype(str), sep='')
+
+fnspza_all = create_table(all_tables_cleaned, stand_column_names)
+
+### data cleaning ###
+fnspza_all['obstaravatel_nazov']='fnspza'
 fnspza_all2 = func.clean_str_cols(fnspza_all)
-fnspza_all2.to_excel('output.xlsx')
 
-tab = all_tables_cleaned_copy[0][2]
+# predmet objednavky
+fnspza_all2['extr_mnozstvo'] = fnspza_all2['objednavka_predmet'].str.extract(r'(\s+\d+x$)')
+fnspza_all2['mnozstvo'] = np.where((pd.isna(fnspza_all2['mnozstvo'])) & (
+            pd.isna(fnspza_all2['extr_mnozstvo']) == False), fnspza_all2['extr_mnozstvo'].str.strip(),
+                                    fnspza_all2['mnozstvo'])
+fnspza_all2['objednavka_predmet'] = fnspza_all2['objednavka_predmet'].str.replace(r'\s+\d+x$', '', regex=True)
+
+# cena
+fnspza_all2['objednavka_hodnota_bez_DPH'] = fnspza_all2['objednavka_hodnota_bez_DPH'].str.replace(r'^mc\s*', '', regex=True)
+
+# datum objednavky
+fnspza_all2['objednavka_datum_zadania'] = pd.to_datetime(fnspza_all2['objednavka_datum_zadania'], errors='ignore')
+
+# save df
+fnspza_all2.to_excel('output.xlsx')
+func.save_df(df=fnspza_all2, name='fnspza_all.pkl')
+
+# s = 'cartrige'
+# df = fnspza_all2[fnspza_all2['objednavka_predmet'].str.contains(s, na=False, regex=False)]
+# df = df.sort_values(by=['objednavka_datum_zadania'], ascending=False)
+#
+# s = 'tibor varga'
+# df = fnspza_all2[fnspza_all2['dodavatel_nazov'].str.contains(s, na=False, regex=False)]
+# df = df.sort_values(by=['objednavka_datum_zadania'], ascending=False)
+
+
