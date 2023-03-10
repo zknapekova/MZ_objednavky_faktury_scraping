@@ -137,6 +137,35 @@ if output[0] == 'fail':
 if output[0] == 'ok':
     data = output[1]
 
+
+# 7 - fakultna nemocnica s poliklinikou zilina
+dict['fakultna nemocnica s poliklinikou zilina']['objednavky_link'] = 'http://www.fnspza.sk/zm2019/objednavky'
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
+
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(dict['fakultna nemocnica s poliklinikou zilina']['objednavky_link'])
+n_records_dropdown = driver.find_element(By.ID, "limit1")
+
+select = Select(n_records_dropdown)
+select.select_by_value('100')
+table_lst = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.ID, "list_1_com_fabrik_1"))).get_attribute(
+    "outerHTML")
+result_df = pd.read_html(table_lst)[0]
+
+for i in result_df.columns.values:
+    if 'Unnamed' in i:
+        result_df.drop(i, axis=1, inplace=True)
+
+result_df = result_df.dropna(thresh=int(len(result_df.columns) / 3)).reset_index(drop=True)
+result_df = result_df[result_df['Číslo objednávky'].str.match(r'(^Uk.+)') == False]
+
+
 #############################################################################################################
 # Data handling (from scraped data)
 #############################################################################################################
@@ -172,13 +201,13 @@ path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Pri
 ### FNsPZA ###
 
 stand_column_names = {
-    'obstaravatel_nazov': ['nazov verejneho obstaravatela'],
+    'objednavatel': ['nazov verejneho obstaravatela'],
     'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)',
                   'kategoria(tovary / prace / sluzby)'],
     'objednavka_predmet': ['nazov predmetu objednavky', 'predmet objednavky'],
-    'objednavka_hodnota_bez_DPH': ['hodnotaobjednavkyv eur bez dph', 's.nc bdph', 'hodnotaobjednavkyv eur bez dph',
+    'cena': ['hodnotaobjednavkyv eur bez dph', 's.nc bdph', 'hodnotaobjednavkyv eur bez dph',
                                    'hodnota'],
-    'objednavka_datum_zadania': ['datum zadania objednavky', 'datum objednavky'],
+    'datum': ['datum zadania objednavky', 'datum objednavky'],
     'objednavka_cislo': ['c.obj.', 'cislo objednavky'],
     'zdroj_financovania': ['zdroje financovania'],
     'balenie': ['balenie'],
@@ -187,13 +216,8 @@ stand_column_names = {
     'poznamka': ['kratke zdovodnenie', 'kratke zdovodnenie2'],
     'dodavatel_ico': ['dodavatel - ico'],
     'dodavatel_nazov': ['dodavatel - nazov'],
-    'dodavatel_ulica': ['dodavatel - ulica'],
-    'dodavatel_psc': ['dodavatel - psc'],
-    'dodavatel_mesto_obec': ['dodavatel - mesto/obec'],
-    'dodavatel_stat': ['dodavatel - stat'],
     'odkaz_na_zmluvu': ['odkaz na zverejnenu zmluvu'],
-    'pocet_oslovenych': ['pocet oslovenych'],
-    'pocet_prijatych_ponuk': ['pocet  prijatych ponuk']
+    'pocet_oslovenych': ['pocet oslovenych']
 }
 
 # download all attachements available from outlook
@@ -211,7 +235,8 @@ all_tables_cleaned[2][3]['sukl_kod'] = all_tables_cleaned[2][3]['sukl_kod1'].str
 fnspza_all = create_table(all_tables_cleaned, stand_column_names)
 
 ### data cleaning ###
-fnspza_all['obstaravatel_nazov']='fnspza'
+fnspza_all['objednavatel']='fnspza'
+fnspza_all['link'] = dict['fakultna nemocnica s poliklinikou zilina']['zverejnovanie_objednavok_faktur_rozne']
 fnspza_all2 = func.clean_str_cols(fnspza_all)
 
 # predmet objednavky
@@ -220,12 +245,19 @@ fnspza_all2['mnozstvo'] = np.where((pd.isna(fnspza_all2['mnozstvo'])) & (
             pd.isna(fnspza_all2['extr_mnozstvo']) == False), fnspza_all2['extr_mnozstvo'].str.strip(),
                                     fnspza_all2['mnozstvo'])
 fnspza_all2['objednavka_predmet'] = fnspza_all2['objednavka_predmet'].str.replace(r'\s+\d+x$', '', regex=True)
+fnspza_all2.drop(['extr_mnozstvo'], axis=1, inplace=True)
 
 # cena
-fnspza_all2['objednavka_hodnota_bez_DPH'] = fnspza_all2['objednavka_hodnota_bez_DPH'].str.replace(r'^mc\s*', '', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r'^mc\s*', '', regex=True)
 
 # datum objednavky
-fnspza_all2['objednavka_datum_zadania'] = pd.to_datetime(fnspza_all2['objednavka_datum_zadania'], errors='ignore')
+fnspza_all2['datum'] = pd.to_datetime(fnspza_all2['datum'], errors='ignore')
+
+# popis
+popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
+                                    'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych']
+fnspza_all2['popis'] = fnspza_all2[popis_list].T.apply(lambda x: x.dropna().to_dict())
+
 
 # save df
 fnspza_all2.to_excel('output.xlsx')
@@ -239,4 +271,5 @@ func.save_df(df=fnspza_all2, name='fnspza_all.pkl')
 # df = fnspza_all2[fnspza_all2['dodavatel_nazov'].str.contains(s, na=False, regex=False)]
 # df = df.sort_values(by=['objednavka_datum_zadania'], ascending=False)
 
+fnspza_all = func.load_df('fnspza_all.pkl', path=os.getcwd())
 
