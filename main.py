@@ -11,6 +11,11 @@ from functions_ZK import *
 from config import *
 from get_outlook_emails import OutlookTools
 import win32com.client
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
 
 current_date_time = datetime.now()
 print('Start:', current_date_time)
@@ -139,12 +144,6 @@ if output[0] == 'ok':
 
 
 # 7 - fakultna nemocnica s poliklinikou zilina
-dict['fakultna nemocnica s poliklinikou zilina']['objednavky_link'] = 'http://www.fnspza.sk/zm2019/objednavky'
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select, WebDriverWait
-from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
 
 options = webdriver.ChromeOptions()
 options.add_argument("--start-maximized")
@@ -158,13 +157,45 @@ table_lst = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By
     "outerHTML")
 result_df = pd.read_html(table_lst)[0]
 
+while True:
+    try:
+        WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                                                                   "//li[contains(@class, 'pagination-next')]//a[contains(@title, 'Nasled')]"))).click()
+        next_table_lst = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.ID, "list_1_com_fabrik_1"))).get_attribute(
+            "outerHTML")
+        next_table = pd.read_html(next_table_lst)[0]
+        result_df = pd.concat([result_df, next_table], ignore_index=True)
+    except TimeoutException as ex:
+        print('Data were retrieved')
+        break
+    except:
+        driver.quit()
+        print('Retrieving data failed')
+        break
+
+
 for i in result_df.columns.values:
     if 'Unnamed' in i:
         result_df.drop(i, axis=1, inplace=True)
 
 result_df = result_df.dropna(thresh=int(len(result_df.columns) / 3)).reset_index(drop=True)
 result_df = result_df[result_df['Číslo objednávky'].str.match(r'(^Uk.+)') == False]
+result_df2 = func.clean_str_cols(result_df)
 
+result_df2 = func.load_df('fnspza_all_web.pkl', path=os.getcwd())
+result_df2=clean_str_col_names(result_df2)
+result_df2.columns=['objednavka_cislo1', 'cpv kod', 'objednavka_predmet', 'cena', 'pocet mj', 'kategoria', 'pridane']
+
+result_df2['cena'] = result_df2['cena'].str.replace(r"[a-z|'|\s|-|\(\)]+", '', regex=True)
+result_df2['cena'] = result_df2['cena'].str.replace(r",", '.', regex=True)
+result_df2['cena']=result_df2['cena'].astype(float)
+
+result_df2['rok_objednavky'] = result_df2['objednavka_cislo1'].str.extract(r'(20\d{2})')
+result_df2['objednavka_cislo'] = result_df2['objednavka_cislo1'].apply(lambda x: x.split('/')[-1])
+result_df2['objednavka_cislo'] = result_df2['objednavka_cislo'].str.replace(r'^0+', '', regex=True)
+result_df2['objednavka_cislo'] = result_df2['objednavka_cislo'].apply(
+    lambda x: x.split('-')[-1] + '-' + x.split('-')[0] if('-' in x) else x)
 
 #############################################################################################################
 # Data handling (from scraped data)
@@ -237,6 +268,8 @@ fnspza_all = create_table(all_tables_cleaned, stand_column_names)
 ### data cleaning ###
 fnspza_all['objednavatel']='fnspza'
 fnspza_all['link'] = dict['fakultna nemocnica s poliklinikou zilina']['zverejnovanie_objednavok_faktur_rozne']
+
+fnspza_all = func.load_df('fnspza_all.pkl', path=os.getcwd())
 fnspza_all2 = func.clean_str_cols(fnspza_all)
 
 # predmet objednavky
@@ -249,9 +282,25 @@ fnspza_all2.drop(['extr_mnozstvo'], axis=1, inplace=True)
 
 # cena
 fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r'^mc\s*', '', regex=True)
+# remove ',-' and  '.-'
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r'[,|\.]-.*', '', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r'[a-z]+\.[a-z]*\s*', '', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r"[a-z]|'|\s|-|[\(\)]+", '', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r",,", '.', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r",", '.', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r".*[:].*", '0', regex=True)
+fnspza_all2['cena'] = fnspza_all2['cena'].str.replace(r"=.*", '', regex=True)
+
+fnspza_all2['cena'] = np.where(fnspza_all2['cena'].str.match(r'\d*\.\d*\.\d*'), fnspza_all2['cena'].str.replace('.', '', 1), fnspza_all2['cena'])
+
+fnspza_all2['cena'] = fnspza_all2['cena'].astype(float)
+
+# rok objednavky
+fnspza_all2['rok_objednavky']=fnspza_all2['datum'].str.extract(r'(20\d{2})')
 
 # datum objednavky
 fnspza_all2['datum'] = pd.to_datetime(fnspza_all2['datum'], errors='ignore')
+
 
 # popis
 popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
@@ -260,16 +309,95 @@ fnspza_all2['popis'] = fnspza_all2[popis_list].T.apply(lambda x: x.dropna().to_d
 
 
 # save df
-fnspza_all2.to_excel('output.xlsx')
+with pd.ExcelWriter('output.xlsx', engine='xlsxwriter', engine_kwargs={'options':{'strings_to_urls': False}}) as writer:
+    fnspza_all2.to_excel(writer)
 func.save_df(df=fnspza_all2, name='fnspza_all.pkl')
 
-# s = 'cartrige'
-# df = fnspza_all2[fnspza_all2['objednavka_predmet'].str.contains(s, na=False, regex=False)]
-# df = df.sort_values(by=['objednavka_datum_zadania'], ascending=False)
-#
-# s = 'tibor varga'
-# df = fnspza_all2[fnspza_all2['dodavatel_nazov'].str.contains(s, na=False, regex=False)]
-# df = df.sort_values(by=['objednavka_datum_zadania'], ascending=False)
+# comparison and pairing
 
-fnspza_all = func.load_df('fnspza_all.pkl', path=os.getcwd())
+fnspza_all2_unique = fnspza_all2.drop_duplicates()
+result_df2_unique = result_df2.drop_duplicates()
+# vsetky_unikatne_objednavky = fnspza_all2_unique.shape[0]
+# chybajuce_cislo_objednavky = sum(fnspza_all2_unique['objednavka_cislo'].isna())
 
+tab_merged = result_df2_unique.merge(fnspza_all2_unique, on=['objednavka_cislo', 'cena', 'rok_objednavky']).sort_values(
+    by='objednavka_cislo')
+tab_merged_povod = pd.merge(fnspza_all2_unique, result_df2_unique, left_on='objednavka_cislo',
+                            right_on='objednavka_cislo1')
+
+# cisla objednavky ktore sa nepodarilo sparovat
+objednavky_paired_list = list(set(tab_merged['objednavka_cislo'])) + list(set(tab_merged_povod['objednavka_cislo_x']))
+objednavky_notpaired_list = []
+dokumenty_list = []
+cena_list = []
+datum_list = []
+popis_list = []
+objednavatel_list = []
+dodavatel_nazov_list = []
+dodavatel_ico_list = []
+
+tab_filtered = fnspza_all2_unique[pd.isna(fnspza_all2_unique['objednavka_cislo']) == False].reset_index(
+    drop=True).sort_values(by='objednavka_cislo')
+
+for i in range(tab_filtered.shape[0]):
+    if tab_filtered['objednavka_cislo'].at[i] not in objednavky_paired_list and tab_filtered['rok_objednavky'].at[
+        i] == '2022':
+        objednavky_notpaired_list.append(tab_filtered['objednavka_cislo'].at[i])
+        dokumenty_list.append(tab_filtered['file'].at[i])
+        cena_list.append(tab_filtered['cena'].at[i])
+        datum_list.append(tab_filtered['datum'].at[i])
+        popis_list.append(tab_filtered['popis'].at[i])
+        objednavatel_list.append(tab_filtered['objednavatel'].at[i])
+        dodavatel_nazov_list.append(tab_filtered['dodavatel_nazov'].at[i])
+        dodavatel_ico_list.append(tab_filtered['dodavatel_ico'].at[i])
+
+# nesparovane objednavky z excelov - 22387/31560 ~ 70%
+objednavky_notpaired_list = list(set((objednavky_notpaired_list)))
+
+# nesparovane objednavky z webu 32348/41638 ~ 77%
+objednavky_web_notpaired_list = []
+cpv_kod_list = []
+objednavka_web_predmet_list = []
+cena_web_list = []
+pocet_mj = []
+kategoria_web_list = []
+pridane_web = []
+
+l = list(set(tab_merged['objednavka_cislo1'])) + list(set(tab_merged_povod['objednavka_cislo_x']))
+result_df2_unique = result_df2_unique.reset_index(drop=True)
+result_df2_unique['pridane_rok'] = result_df2_unique['pridane'].apply(lambda x: x.split('.')[-1])
+for i in range(result_df2_unique.shape[0]):
+    if (result_df2_unique['objednavka_cislo1'].at[i] not in l) and (result_df2_unique['pridane_rok'].at[i] == '2022'):
+        objednavky_web_notpaired_list.append(result_df2_unique['objednavka_cislo1'].at[i])
+        cpv_kod_list.append(result_df2_unique['cpv kod'].at[i])
+        objednavka_web_predmet_list.append(result_df2_unique['objednavka_predmet'].at[i])
+        cena_web_list.append(result_df2_unique['cena'].at[i])
+        pocet_mj.append(result_df2_unique['pocet mj'].at[i])
+        kategoria_web_list.append(result_df2_unique['kategoria'].at[i])
+        pridane_web.append(result_df2_unique['pridane'].at[i])
+
+objednavky_web_notpaired_list = list(set(objednavky_web_notpaired_list))
+
+### concatenating together ###
+df_excels = pd.DataFrame(list(
+    zip(objednavky_notpaired_list, dokumenty_list, cena_list, datum_list, objednavatel_list, popis_list,
+        dodavatel_nazov_list, dodavatel_ico_list)),
+                         columns=['cislo_objednavky', 'zdroj', 'cena', 'datum', 'objednavatel', 'popis',
+                                  'dodavatel_nazov', 'dodavatel_ico'])
+popis_list3 = ['dodavatel_nazov', 'dodavatel_ico']
+df_excels['dodavatel'] = df_excels[popis_list3].T.apply(lambda x: x.dropna().to_dict())
+df_web = pd.DataFrame(list(
+    zip(objednavky_web_notpaired_list, cpv_kod_list, objednavka_web_predmet_list, cena_web_list, pocet_mj,
+        kategoria_web_list, pridane_web)),
+                      columns=['cislo_objednavky', 'cpv kod', 'objednavka_predmet', 'cena', 'pocet mj', 'kategoria',
+                               'datum'])
+df_web['zdroj'] = 'web'
+df_web['objednavatel'] = 'fnspza'
+df_web['dodavatel'] = np.nan
+popis_list2 = ['cpv kod', 'objednavka_predmet', 'kategoria', 'pocet mj']
+df_web['popis'] = df_web[popis_list2].T.apply(lambda x: x.dropna().to_dict())
+
+df_final = pd.concat([df_web[['cislo_objednavky', 'zdroj', 'cena', 'datum', 'objednavatel', 'popis']],
+                      df_excels[['cislo_objednavky', 'zdroj', 'cena', 'datum', 'objednavatel', 'popis', 'dodavatel']]],
+                     ignore_index=True)
+df_final.to_excel('nenapojene_objednavky_2022_v2.xlsx')
