@@ -29,7 +29,12 @@ def update_dict(dict):
 
     dict['detska fakultna nemocnica s poliklinikou banska bystrica'][
         'objednavky_faktury_link'] = 'https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2023.01.01_do_2023.02.17.pdf'
+    dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_link2022']='https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2022.01.01_do_2022.12.30.pdf'
+    dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_link2021']='https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2022.01.01_do_2022.12.30.pdf'
+
+
     dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_file_ext'] = '.pdf'
+
 
     dict['detska psychiatricka liecebna n o hran'][
         'objednavky_faktury_link'] = 'https://zverejnovanie.mzsr.sk/ministerstvo-zdravotnictva-sr/objednavky/?export=csv&art_rok=2023'
@@ -38,6 +43,7 @@ def update_dict(dict):
     dict['fakultna nemocnica nitra']['objednavky_faktury_link'] = 'https://fnnitra.sk/objd/new/'
     dict['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica'][
         'objednavky_faktury_link'] = 'https://www.fnspfdr.sk/objednavky/zverejnenie.php?akcia=vsetkyobjednavky_internet'
+    dict['fakultna nemocnica s poliklinikou zilina']['objednavky_link'] = 'http://www.fnspza.sk/zm2019/objednavky'
 
     return dict
 
@@ -231,7 +237,7 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg'):
+        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl'):
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
@@ -253,6 +259,7 @@ def clean_tables(input_list):
                     doc[key].columns = doc[key].iloc[0]
                     doc[key] = doc[key].drop(doc[key].index[0])
             if not doc[key].empty:
+                doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
                 doc[key] = clean_str_col_names(doc[key])
                 input_list[i].append(doc[key])
     return input_list
@@ -260,7 +267,6 @@ def clean_tables(input_list):
 def create_table(list_of_tables, dictionary):
     final_table = pd.DataFrame(columns=list(dictionary.keys()))
     for i in range(len(list_of_tables)):  # all excel files
-        print(i)
         for j in range(2, len(list_of_tables[i])):  # all sheets
             include = False
             for k in range(len(list_of_tables[i][j].columns.values)):  # all columns
@@ -269,11 +275,106 @@ def create_table(list_of_tables, dictionary):
                         include = True
                         list_of_tables[i][j].columns = list_of_tables[i][j].columns.str.replace(
                             list_of_tables[i][j].columns.values[k], key, regex=False)
-            print(include)
             if include:
                 df = list_of_tables[i][j].reset_index(drop=True)
-                df['zdrojovy_dokument'] = list_of_tables[i][0]
+                df['file'] = list_of_tables[i][0]
                 df['insert_date'] = datetime.now()
-                cols = list(set(list_of_tables[i][j].columns.values).intersection(final_table.columns.values))+['zdrojovy_dokument', 'insert_date']
+                cols = list(set(list_of_tables[i][j].columns.values).intersection(final_table.columns.values))+['file', 'insert_date']
                 final_table = pd.concat([final_table, df[cols]], ignore_index=True)
     return final_table
+
+
+def get_dates(date_string: str):
+    # example: 2022-08-31 00:00:00
+    if re.match(r'^20\d{2}-\d{2}-\d{2}.*', str(date_string)):
+        date = date_string.split(' ')[0]
+        return pd.Timestamp(year=int(date.split('-')[0]), month=int(date.split('-')[1]),
+                            day=int(date.split('-')[2]))
+    # example: 31.8.2022 or 31. 8. 2022
+    elif re.match(r'^\d+\.\s*\d+\.\s*20\d{2}$', str(date_string)):
+        date = date_string.strip()
+        return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
+                            day=int(date.split('.')[0]))
+    # example: 31/8/22
+    elif re.match(r'\d+/\d+/\d{2}', str(date_string)):
+        return pd.Timestamp(year=int('20' + date_string.split('/')[2]), month=int(date_string.split('/')[1]),
+                            day=int(date_string.split('/')[0]))
+    # example: 05.09.2022-09.09.2022
+    elif re.match(r'\d+\.\d+\.20\d{2}.*-.*\d+\.\d+\.20\d{2}.*', str(date_string)):
+        date = date_string.split('-')[0].strip()
+        return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
+                            day=int(date.split('.')[0]))
+    # example: 2.-6.10.
+    elif re.match(r'^\d+\.-\d+\.\d+.*', str(date_string)):
+        date = date_string.split('-')[1].strip()
+        return pd.Timestamp(year=2017, month=int(date.split('.')[1]),
+                            day=int(date.split('.')[0]))
+    # example: 12.-16.10.2018
+    elif re.match(r'^\d+.*-.*\d+\.\d+\..*20\d{2}', str(date_string)):
+        date = date_string.split('-')[1].strip()
+        return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
+                            day=int(date.split('.')[0]))
+    elif re.match(r'^\d+.*\s.*\d+\.\d+\..*20\d{2}', str(date_string)):
+        date = date_string.split(' ')[1].strip()
+        return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
+                            day=int(date.split('.')[0]))
+    else:
+        return np.nan
+
+
+def fnspza_data_cleaning(input_table):
+    ### data cleaning ###
+
+    fnspza_all2 = func.clean_str_cols(input_table)
+
+    # predmet objednavky
+    fnspza_all2['extr_mnozstvo'] = fnspza_all2['objednavka_predmet'].str.extract(r'(\s+\d+x$)')
+    fnspza_all2['mnozstvo'] = np.where((pd.isna(fnspza_all2['mnozstvo'])) & (
+            pd.isna(fnspza_all2['extr_mnozstvo']) == False), fnspza_all2['extr_mnozstvo'].str.strip(),
+                                       fnspza_all2['mnozstvo'])
+    fnspza_all2['objednavka_predmet'] = fnspza_all2['objednavka_predmet'].str.replace(r'\s+\d+x$', '', regex=True)
+    fnspza_all2.drop(['extr_mnozstvo'], axis=1, inplace=True)
+
+    # cena
+    dict_cena = {'^mc\s*': '', '[,|\.]-.*': '', '[a-z]+\.[a-z]*\s*': '', "[a-z]|'|\s|-|[\(\)]+": '', ",,": '.',
+                       ",": '.', ".*[:].*": '0',
+                       "=.*": ''}
+    for original, replacement in dict_cena.items():
+        fnspza_all2['cena'] = fnspza_all2['cena'].replace(original, replacement, regex=True)
+
+    fnspza_all2['cena'] = np.where(fnspza_all2['cena'].str.match(r'\d*\.\d*\.\d*'),
+                                   fnspza_all2['cena'].str.replace('.', '', 1), fnspza_all2['cena'])
+    fnspza_all2['cena'] = fnspza_all2['cena'].astype(float)
+
+    # rok objednavky - 4 outlier values 2000, 2048, 2033 and 2026
+    fnspza_all2['rok_objednavky'] = fnspza_all2['datum'].str.extract(r'(20\d{2})')
+
+    fnspza_all2['rok_objednavky_num'] = fnspza_all2['rok_objednavky'].apply(
+        lambda x: pd.to_numeric(x) if (pd.isna(x) == False) else 0)
+
+    # datum objednavky
+    dict_datum_objednavky = {'210': ['201', True], '217': ['2017', True], '[a-z]': ['', True], '\(': ['', True],
+                             '\)': ['', True], '\s+': [' ', True], '..': ['.', False], ': ': ['', False], '.,': ['.', False],
+                             '5019': ['2019', True], ',': ['.', False], '201/8': ['2018', True], '20\.17': ['2017', True],
+                             '209': ['2019', True], '19.12.202$': ['19.12.2022', True]
+                             }
+    for key, value in dict_datum_objednavky.items():
+        fnspza_all2['datum'] = fnspza_all2['datum'].replace(key, value[0], regex=value[1])
+
+    fnspza_all2['datum'] = fnspza_all2['datum'].str.strip()
+
+    fnspza_all2['datum_adj'] = fnspza_all2['datum'].apply(get_dates)
+
+    fnspza_all2['datum_adj'] = fnspza_all2.apply(
+        lambda row: pd.Timestamp(year=row['rok_objednavky_num'], month=1, day=1) if (
+                (pd.isna(row['rok_objednavky']) == False) & (pd.isnull(row['datum_adj']) == True)) else row[
+            'datum_adj'], axis=1)
+
+    # popis
+    popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
+                  'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych']
+    dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
+    fnspza_all2['popis'] = fnspza_all2[popis_list].T.apply(lambda x: x.dropna().to_dict())
+    fnspza_all2['dodavatel'] = fnspza_all2[dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
+
+    return fnspza_all2
