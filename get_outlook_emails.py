@@ -1,5 +1,6 @@
 import win32com.client  # pywin32 package needs to be installed
 import os
+import pandas as pd
 
 
 class OutlookTools:
@@ -35,9 +36,11 @@ class OutlookTools:
         :return:
         '''
         for message in messages:
+            ts = pd.Timestamp(message.senton).strftime('%d_%m_%Y_%I_%M_%S')
             for attachment in message.Attachments:
                 try:
-                    attachment.SaveASFile(os.path.join(output_path, attachment.FileName))
+                    print(message.senton)
+                    attachment.SaveASFile(os.path.join(output_path, ts+'_'+attachment.FileName))
                     print(f"attachment {attachment.FileName} from {message.Sender} saved")
                 except Exception as e:
                     print("error when saving the attachment:" + str(e))

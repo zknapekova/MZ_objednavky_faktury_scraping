@@ -20,20 +20,6 @@ from selenium.common.exceptions import ElementNotVisibleException, TimeoutExcept
 current_date_time = datetime.now()
 print('Start:', current_date_time)
 
-# load excel and create dictionary
-df = func.load_df(source_path)
-df['nazov'] = df['Nazov_full']
-
-# clean data
-df = func.clean_str_cols(df, cols=['Nazov_full'])
-df['Nazov_full'] = df['Nazov_full'].replace(',|\.', '', regex=True)
-dict = df.set_index('Nazov_full').T.to_dict('dict')
-
-keysList = list(dict.keys())
-
-# update
-dict = update_dict(dict)
-
 #############################################################################################################
 # Web scraping
 #############################################################################################################
@@ -129,6 +115,7 @@ urlretrieve(dict['detska psychiatricka liecebna n o hran']['objednavky_faktury_l
 
 # 6 - Fakultna nemocnica Nitra
 df_fnnr = pd.read_html(dict['fakultna nemocnica nitra']['objednavky_faktury_link'], encoding='utf-8')[0]
+df_fnnr2 = pd.read_html('https://fnnitra.sk/objd/2022/', encoding='utf-8')[0]
 df_fnnr = func.clean_str_cols(df_fnnr)
 
 # 7 - fakultna nemocnica s poliklinikou f d roosevelta banska bystrica
@@ -228,14 +215,16 @@ otl = OutlookTools(outlook)
 
 path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
 
-### FNsPZA ###
+### FNsPZA - first load ###
 
+hosp = 'fnspza'
 hosp_path = data_path + "fnspza\\"
+hosp_path_hist = historical_data_path + "fnspza\\"
 
 # ## download all attachements available from outlook
-search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%fnspza.sk' ")
-#otl.save_attachement(hosp_path, search_result)
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + hosp + '.sk' + "' ")
 
+# otl.save_attachment(hosp_path, search_result)
 ## load data
 all_tables = load_files(hosp_path)
 
@@ -245,25 +234,55 @@ all_tables_cleaned[2][3]['sukl_kod'] = all_tables_cleaned[2][3]['sukl_kod1'].str
     all_tables_cleaned[2][3]['kod'].astype(str), sep='')
 
 fnspza_all = create_table(all_tables_cleaned, stand_column_names)
-fnspza_all['objednavatel'] = 'fnspza'
+fnspza_all['objednavatel'] = hosp
 fnspza_all['link'] = dict['fakultna nemocnica s poliklinikou zilina']['zverejnovanie_objednavok_faktur_rozne']
 
 ## data cleaning
 fnspza_df = fnspza_data_cleaning(fnspza_all)
 
 ## load table
-#fnspza_df = func.load_df(os.path.join(hosp_path+'fnspza_all.pkl'), path=os.getcwd())
 fnspza_df_search = pd.DataFrame(
     fnspza_df[['objednavatel', 'cena', 'datum_adj', 'dodavatel', 'popis', 'insert_date', 'file', 'link']])
 fnspza_df_search.columns = ['objednavatel', 'cena', 'datum', 'dodavatel', 'popis', 'insert_date', 'file', 'link']
 
 # ## save df
-with pd.ExcelWriter(os.path.join(search_data_path+'fnspza_all.xlsx'), engine='xlsxwriter', engine_kwargs={'options':{'strings_to_urls': False}}) as writer:
+with pd.ExcelWriter(os.path.join(search_data_path + 'fnspza_all.xlsx'), engine='xlsxwriter',
+                    engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
     fnspza_df_search.to_excel(writer)
-func.save_df(df=fnspza_df, name=os.path.join(search_data_path+'fnspza_all.pkl'))
+func.save_df(df=fnspza_df_search, name=os.path.join(search_data_path + 'fnspza_all.pkl'))
 
 
+### FNNR - first load ###
 
+hosp = 'fnnitra'
+hosp_path = data_path + hosp +"\\"
+if not os.path.exists(hosp_path):
+    os.mkdir(hosp_path)
 
+hosp_path_hist = historical_data_path + hosp +"\\"
+if not os.path.exists(hosp_path_hist):
+    os.mkdir(hosp_path_hist)
+
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + hosp + '.sk' + "' ")
+otl.save_attachment(hosp_path, search_result)
+
+all_tables = load_files(hosp_path)
+all_tables_cleaned = clean_tables(all_tables)
+# TODO check all column names to update dict
+
+fnnitra_all = create_table(all_tables_cleaned, stand_column_names)
+fnnitra_all['objednavatel'] = hosp
+fnnitra_all['link'] = dict['fakultna nemocnica s poliklinikou zilina']['zverejnovanie_objednavok_faktur_rozne']
+
+fnnitra_all = fnnitra_all.drop(fnnitra_all[(
+        fnnitra_all['kategoria'].astype(str).str.contains('^[Vypracoval|Schválil].*', na=False, regex=True))].index)
+
+## data cleaning
+dict_cena = {"[a-z]|'|\s|-|[\(\)]+": ''}
+
+for original, replacement in dict_cena.items():
+    fnnitra_all['cena'] = fnnitra_all['cena'].replace(original, replacement, regex=True)
+
+fnnitra_all['cena'] = fnnitra_all['cena'].astype(float)
 
 

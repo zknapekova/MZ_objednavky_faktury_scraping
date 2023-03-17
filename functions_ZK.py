@@ -14,8 +14,11 @@ from datetime import datetime
 from unidecode import unidecode
 import ezodf
 import functionss as func
+import os
+import shutil
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pd.options.mode.chained_assignment = None  # default='warn'
 
 def update_dict(dict):
     dict['centrum pre liecbu drogovych zavislosti bratislava'][
@@ -252,6 +255,7 @@ def clean_tables(input_list):
         doc = input_list[i][-1]
         for key, value in doc.items():
             doc[key] = doc[key].dropna(axis=1, thresh=3)
+            doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
             if ('Unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                 doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
                 doc[key] = doc[key].dropna(axis=1, thresh=3)
@@ -259,7 +263,6 @@ def clean_tables(input_list):
                     doc[key].columns = doc[key].iloc[0]
                     doc[key] = doc[key].drop(doc[key].index[0])
             if not doc[key].empty:
-                doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
                 doc[key] = clean_str_col_names(doc[key])
                 input_list[i].append(doc[key])
     return input_list
@@ -345,6 +348,7 @@ def fnspza_data_cleaning(input_table):
     fnspza_all2['cena'] = np.where(fnspza_all2['cena'].str.match(r'\d*\.\d*\.\d*'),
                                    fnspza_all2['cena'].str.replace('.', '', 1), fnspza_all2['cena'])
     fnspza_all2['cena'] = fnspza_all2['cena'].astype(float)
+    print('price converted to float successfully')
 
     # rok objednavky - 4 outlier values 2000, 2048, 2033 and 2026
     fnspza_all2['rok_objednavky'] = fnspza_all2['datum'].str.extract(r'(20\d{2})')
@@ -369,12 +373,27 @@ def fnspza_data_cleaning(input_table):
         lambda row: pd.Timestamp(year=row['rok_objednavky_num'], month=1, day=1) if (
                 (pd.isna(row['rok_objednavky']) == False) & (pd.isnull(row['datum_adj']) == True)) else row[
             'datum_adj'], axis=1)
+    print('date converted to timestamp successfully')
 
     # popis
     popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
                   'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych']
     dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
-    fnspza_all2['popis'] = fnspza_all2[popis_list].T.apply(lambda x: x.dropna().to_dict())
-    fnspza_all2['dodavatel'] = fnspza_all2[dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
 
-    return fnspza_all2
+    fnspza_all3=fnspza_all2.drop_duplicates()
+
+    fnspza_all3['popis'] = fnspza_all3[popis_list].T.apply(lambda x: x.dropna().to_dict())
+    fnspza_all3['dodavatel'] = fnspza_all3[dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
+
+    return fnspza_all3
+
+
+
+def move_all_files(source_path, destination_path):
+    for file_name in os.listdir(source_path):
+        source = source_path + file_name
+        destination = destination_path + file_name
+        # move only files
+        if os.path.isfile(source):
+            shutil.move(source, destination)
+            print('Moved:', file_name)
