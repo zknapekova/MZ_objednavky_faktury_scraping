@@ -1,7 +1,7 @@
 import pandas as pd
 from config import *
 from functions_ZK import *
-from get_outlook_emails import OutlookTools
+from schemas import OutlookTools, PriameObjednavkyMail
 import win32com.client
 import functionss as func
 import shutil
@@ -51,6 +51,7 @@ with pd.ExcelWriter(os.path.join(search_data_path + 'fnspza_all.xlsx'), engine='
 func.save_df(df=fnspza_df_search, name=os.path.join(search_data_path + 'fnspza_all.pkl'))
 
 move_all_files(source_path=hosp_path, destination_path=hosp_path_hist)
+
 
 
 

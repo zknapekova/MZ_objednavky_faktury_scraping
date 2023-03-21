@@ -20,35 +20,6 @@ import shutil
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 pd.options.mode.chained_assignment = None  # default='warn'
 
-def update_dict(dict):
-    dict['centrum pre liecbu drogovych zavislosti bratislava'][
-        'objednavky_faktury_link'] = 'https://cpldz.sk/wp-content/uploads/Fakturyaobjednavky_december.xlsx'
-
-    dict['centrum pre liecbu drogovych zavislosti kosice'][
-        'objednavky_faktury_link'] = 'https://ba5c113364.clvaw-cdnwnd.com/a410a7ba52b55860f90d7278a3fc9ce5/200000168-2c40a2c40c/Objedn%C3%A1vky%20tovarov%2C%20slu%C5%BEieb%20a%20pr%C3%A1c%20a%20Fakt%C3%BAry.xlsx?ph=ba5c113364'
-
-    dict['detska fakultna nemocnica kosice'][
-        'objednavky_faktury_link'] = 'https://docs.google.com/uc?id=1uNSfzKDWdQfcwNJv5vBNS3yTGkGKlOIsK9FxXpx_edY'
-
-    dict['detska fakultna nemocnica s poliklinikou banska bystrica'][
-        'objednavky_faktury_link'] = 'https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2023.01.01_do_2023.02.17.pdf'
-    dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_link2022']='https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2022.01.01_do_2022.12.30.pdf'
-    dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_link2021']='https://www.detskanemocnica.sk/sites/default/files/files/199/objednavky_od_2022.01.01_do_2022.12.30.pdf'
-
-
-    dict['detska fakultna nemocnica s poliklinikou banska bystrica']['objednavky_faktury_file_ext'] = '.pdf'
-
-
-    dict['detska psychiatricka liecebna n o hran'][
-        'objednavky_faktury_link'] = 'https://zverejnovanie.mzsr.sk/ministerstvo-zdravotnictva-sr/objednavky/?export=csv&art_rok=2023'
-    dict['detska psychiatricka liecebna n o hran']['objednavky_faktury_file_ext'] = '.csv'
-
-    dict['fakultna nemocnica nitra']['objednavky_faktury_link'] = 'https://fnnitra.sk/objd/new/'
-    dict['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica'][
-        'objednavky_faktury_link'] = 'https://www.fnspfdr.sk/objednavky/zverejnenie.php?akcia=vsetkyobjednavky_internet'
-    dict['fakultna nemocnica s poliklinikou zilina']['objednavky_link'] = 'http://www.fnspza.sk/zm2019/objednavky'
-
-    return dict
 
 
 def preprocess_image(img, resize={'apply': True, 'scale_percent': 220}, gray_scale=True,
@@ -123,7 +94,7 @@ def FNsP_BB_objednavky(link:str, search_by: str, value: str, name: str):
     image = cv2.imread(img_name)
     result = preprocess_image(image)
     text = pytesseract.image_to_string(result, config='--psm 6')
-    # TODO - check easyocr package(?) in case more issues occurr
+    # TODO - check easyocr package(?) in case more issues occur
     code = re.findall('\d{5}', text)
     print('Code read by OCR: ', code)
 
@@ -222,14 +193,6 @@ def clean_str_col_names(df):
     df.columns = [unidecode(str(x).lower().strip().replace('\n', '')) for x in df.columns]
     return df
 
-# def clean_table(df):
-#     df = df.dropna(axis=1, thresh=3)
-#     filtered_values = list(filter(lambda v: re.match('^Unnamed.*', v), df.columns))
-#     indices = [index for (index, item) in enumerate(df.columns.values) if item in filtered_values]
-#     for i in range(len(indices)):
-#         df.columns.values[indices[i]]=df.iloc[0][indices[i]]
-#     return df
-
 def load_files(data_path):
     '''
     :param data_path: path to folder
@@ -250,20 +213,24 @@ def load_files(data_path):
     print('Loading took: ', datetime.now()-loading_start)
     return all_tables
 
+
 def clean_tables(input_list):
     for i in range(len(input_list)):
         doc = input_list[i][-1]
         for key, value in doc.items():
             doc[key] = doc[key].dropna(axis=1, thresh=3)
             doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
-            if ('Unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
+            doc[key] = func.clean_str_cols(doc[key])
+            doc[key] = clean_str_col_names(doc[key])
+            if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                 doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
                 doc[key] = doc[key].dropna(axis=1, thresh=3)
                 if not doc[key].empty:
+                    if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))):
+                        doc[key] = doc[key].drop(doc[key].index[0])
                     doc[key].columns = doc[key].iloc[0]
                     doc[key] = doc[key].drop(doc[key].index[0])
             if not doc[key].empty:
-                doc[key] = clean_str_col_names(doc[key])
                 input_list[i].append(doc[key])
     return input_list
 
@@ -397,3 +364,8 @@ def move_all_files(source_path, destination_path):
         if os.path.isfile(source):
             shutil.move(source, destination)
             print('Moved:', file_name)
+
+def str_col_replace(table, column, dictionary):
+    for original, replacement in dictionary.items():
+        table[column] = table[column].replace(original, replacement, regex=True)
+    return table

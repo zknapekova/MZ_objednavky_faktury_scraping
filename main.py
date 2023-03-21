@@ -4,12 +4,11 @@ import functionss as func
 import os
 from urllib.request import build_opener, install_opener, urlretrieve
 from datetime import datetime, date
-# import gdown
 import camelot
 import re
 from functions_ZK import *
 from config import *
-from get_outlook_emails import OutlookTools
+from schemas import *
 import win32com.client
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -18,7 +17,11 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
 
 current_date_time = datetime.now()
-print('Start:', current_date_time)
+
+outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+otl = OutlookTools(outlook)
+
+path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
 
 #############################################################################################################
 # Web scraping
@@ -210,11 +213,6 @@ objednavky_all.to_excel('output.xlsx')
 # Data handling (from mails)
 #############################################################################################################
 
-outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-otl = OutlookTools(outlook)
-
-path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
-
 ### FNsPZA - first load ###
 
 hosp = 'fnspza'
@@ -254,35 +252,133 @@ func.save_df(df=fnspza_df_search, name=os.path.join(search_data_path + 'fnspza_a
 
 ### FNNR - first load ###
 
-hosp = 'fnnitra'
-hosp_path = data_path + hosp +"\\"
-if not os.path.exists(hosp_path):
-    os.mkdir(hosp_path)
+fnnr = PriameObjednavkyMail('fnnitra')
 
-hosp_path_hist = historical_data_path + hosp +"\\"
-if not os.path.exists(hosp_path_hist):
-    os.mkdir(hosp_path_hist)
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + fnnr.hosp + '.sk' + "' ")
+otl.save_attachment(fnnr.hosp_path, search_result)
 
-search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + hosp + '.sk' + "' ")
-otl.save_attachment(hosp_path, search_result)
+fnnr.load()
+fnnr.clean_tables()
+fnnr.create_table(stand_column_names=stand_column_names)
 
-all_tables = load_files(hosp_path)
-all_tables_cleaned = clean_tables(all_tables)
-# TODO check all column names to update dict
+fnnr.create_columns_w_dict(key='fakultna nemocnica nitra')
 
-fnnitra_all = create_table(all_tables_cleaned, stand_column_names)
-fnnitra_all['objednavatel'] = hosp
-fnnitra_all['link'] = dict['fakultna nemocnica s poliklinikou zilina']['zverejnovanie_objednavok_faktur_rozne']
+## data cleaning ##
+# cena
+dict_cena = {"[a-z]|'|\s|[\(\)]+": '', '[,|\.]-.*': '', '-,': '', ",": '.', '\.\.': '.', '/.*/*': '', '\..\.\+': '',
+             '/\..*': '', '.*:': ''}
+fnnr.df_all = str_col_replace(fnnr.df_all, 'cena', dict_cena)
+fnnr.df_all['cena'] = fnnr.df_all['cena'].astype(float)
 
-fnnitra_all = fnnitra_all.drop(fnnitra_all[(
-        fnnitra_all['kategoria'].astype(str).str.contains('^[Vypracoval|Schválil].*', na=False, regex=True))].index)
+# datum
+fnnr.df_all['datum'] = fnnr.df_all['datum'].str.strip()
+fnnr.df_all['datum_adj'] = fnnr.df_all['datum'].apply(get_dates)
 
-## data cleaning
-dict_cena = {"[a-z]|'|\s|-|[\(\)]+": ''}
+# create final table
+fnnitra_df_search = pd.DataFrame(
+    fnnr.df_all[['objednavatel', 'cena', 'datum_adj', 'dodavatel', 'popis', 'insert_date', 'file', 'link']])
+fnnitra_df_search.columns = fnnr.final_table_cols
 
-for original, replacement in dict_cena.items():
-    fnnitra_all['cena'] = fnnitra_all['cena'].replace(original, replacement, regex=True)
+# save tables
+fnnr.save_tables(table=fnnitra_df_search)
 
-fnnitra_all['cena'] = fnnitra_all['cena'].astype(float)
 
+### FNTN - first load ###
+
+fntn = PriameObjednavkyMail('fntn')
+
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(dict['fakultna nemocnica trencin']['objednavky_link'])
+
+table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                                                               "//div[contains(@id, 'content')]//table"))).get_attribute(
+    "outerHTML")
+result_df = pd.read_html(table_html)[0]
+
+while True:
+    try:
+        WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                                                                   "//div[contains(@class, 'next')]//a[contains(text(), 'Nasled')]"))).click()
+        sleep(4)
+        next_table_lst = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.XPATH, "//div[contains(@id, 'content')]//table"))).get_attribute(
+            "outerHTML")
+        next_table = pd.read_html(next_table_lst)[0]
+        result_df = pd.concat([result_df, next_table], ignore_index=True)
+        sleep(3)
+    except TimeoutException as ex:
+        print('Data were retrieved')
+        break
+    except:
+        driver.quit()
+        print('Retrieving data failed')
+        break
+
+result_df = func.load_df(os.path.join(fntn.hosp_path + '21_03_2023_11_07_08fntn_web.pkl'), path=os.getcwd())
+
+# data cleaning
+result_df = func.clean_str_cols(result_df)
+result_df = clean_str_col_names(result_df)
+
+result_df['file'] = 'web'
+result_df['insert_date'] = datetime.now()
+
+result_df['ico dodavatela'] = result_df['ico dodavatela'].str.replace('\..*', '', regex=True)
+result_df['cena'] = result_df['cena s dph (EUR)'].astype(float)
+result_df['datum vyhotovenia'] = result_df['datum vyhotovenia'].str.strip()
+result_df['datum'] = result_df['datum vyhotovenia'].apply(get_dates)
+
+fntn.df_all = result_df
+fntn.dodavatel_list = ['nazov dodavatela', 'ico dodavatela']
+fntn.popis_list = ['popis', 'cislo objednavky', 'cislo zmluvy', 'schvalil']
+fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
+
+fntn_search = pd.DataFrame(
+    fntn.df_all[['objednavatel', 'cena', 'datum', 'dodavatel', 'popis', 'insert_date', 'file', 'link']])
+fntn_search.columns = fntn.final_table_cols
+
+fntn.save_tables(table=fntn_search)
+
+
+### FNSP Presov - first load ###
+
+fnsppresov = PriameObjednavkyMail('fnsppresov')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + fnsppresov.hosp + '.sk' + "' ")
+otl.save_attachment(fnsppresov.hosp_path, search_result)
+
+fnsppresov.load()
+fnsppresov.clean_tables()
+fnsppresov.data_check()
+fnsppresov.create_table(stand_column_names=stand_column_names)
+
+## data cleaning ##
+for col in fnsppresov.df_all.columns.values:
+    fnsppresov.df_all.drop(
+        fnsppresov.df_all[(fnsppresov.df_all[col].astype(str).str.match('(.*riaditel.*)|(dna: \d+.*)') == True)].index,
+        inplace=True)
+
+fnsppresov.df_all['cena'] = fnsppresov.df_all['cena'].replace('18  255,60 eur', '18255.60')
+fnsppresov.df_all['cena'] = fnsppresov.df_all['cena'].astype(float)
+fnsppresov.df_all['datum'] = fnsppresov.df_all['datum'].str.strip()
+fnsppresov.df_all['datum'] = fnsppresov.df_all['datum'].apply(get_dates)
+
+fnsppresov.create_columns_w_dict(key='fakultna nemocnica s poliklinikou j a reimana presov')
+
+fnsppresov_search = pd.DataFrame(fnsppresov.df_all[fnsppresov.final_table_cols])
+
+# save tables
+fnsppresov.save_tables(table=fnsppresov_search)
+
+### FNTT - first load ###
+
+fntt = PriameObjednavkyMail('fntt')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + fntt.hosp + '.sk' + "' ")
+otl.save_attachment(fntt.hosp_path, search_result)
 
