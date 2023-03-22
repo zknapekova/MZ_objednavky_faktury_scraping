@@ -27,7 +27,7 @@ stand_column_names = {
     'objednavatel': ['nazov verejneho obstaravatela'],
     'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)',
                   'kategoria(tovary / prace / sluzby)', 'kategoria (tovar/stavebna praca/sluzba)', 'kategoria zakazky (tovar/stavebna praca/sluzba)'],
-    'objednavka_predmet': ['nazov predmetu objednavky', 'predmet objednavky', 'nazov predmetu zakazky', 'predmet zakazky'],
+    'objednavka_predmet': ['nazov predmetu objednavky', 'predmet objednavky', 'nazov predmetu zakazky', 'predmet zakazky', 'nazou predmetu objednavky'],
     'cena': ['hodnotaobjednavkyv eur bez dph', 's.nc bdph', 'hodnotaobjednavkyv eur bez dph', 'hodnota zakazky            s dph',
                                    'hodnota', 'predpokladana hodnota v eur bez dph', 'hodnota objednavky v eur bez dph'],
     'datum': ['datum zadania objednavky', 'datum objednavky', 'cislo oznamenia o vyhlaseni vo/ cislo vestnika/ datum zverejnenia'],

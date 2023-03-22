@@ -16,6 +16,7 @@ import ezodf
 import functionss as func
 import os
 import shutil
+from win32com import client as wc
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -190,7 +191,7 @@ def create_standardized_table(key, table, cols, columns_to_insert):
     return objednavky
 
 def clean_str_col_names(df):
-    df.columns = [unidecode(str(x).lower().strip().replace('\n', '')) for x in df.columns]
+    df.columns = [unidecode(str(x).lower().strip().replace('\n', '').replace('  ', ' ')) for x in df.columns]
     return df
 
 def load_files(data_path):
@@ -203,10 +204,16 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl'):
+        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx'):
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
+        elif file_name.split(sep='.')[-1] == 'doc':
+            w = wc.Dispatch('Word.Application')
+            doc = w.Documents.Open(os.path.join(data_path, file_name))
+            doc.SaveAs(os.path.join(data_path, file_name.split('.')[-2] + '.docx'), 16)
+            doc.Close()
+            continue
         else:
             df = func.load_df(name=file_name, path=data_path, sheet_name=None)
         all_tables.append([file_name, df])

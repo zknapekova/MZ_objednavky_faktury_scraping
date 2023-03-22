@@ -3,6 +3,8 @@ import os
 import pandas as pd
 from config import *
 from functions_ZK import *
+import mysql.connector as pyo
+from mysql_config import *
 import copy
 
 
@@ -38,7 +40,7 @@ class PriameObjednavkyMail:
                 doc[key] = func.clean_str_cols(doc[key])
                 doc[key] = clean_str_col_names(doc[key])
                 for col in doc[key].columns.values:
-                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match('(vypracoval.*)|(schvalil.*)') == True)].index,
+                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match('(vypracov.*)|(schvalil.*)') == True)].index,
                                   inplace=True)
                 if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                     doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
@@ -49,6 +51,7 @@ class PriameObjednavkyMail:
                         doc[key].columns = doc[key].iloc[0]
                         doc[key] = doc[key].drop(doc[key].index[0])
                 if not doc[key].empty:
+                    doc[key] = clean_str_col_names(doc[key])
                     self.all_tables_list_cleaned[i].append(doc[key])
 
     def data_check(self):
@@ -62,6 +65,7 @@ class PriameObjednavkyMail:
                 for k in range(len(self.all_tables_list_cleaned[i][j].columns.values)):
                     self.all_columns_names.append(self.all_tables_list_cleaned[i][j].columns.values[k])
         f.close()
+        print(set(self.all_columns_names))
         print('File output.txt was saved.')
 
     def create_table(self, stand_column_names):
@@ -80,6 +84,30 @@ class PriameObjednavkyMail:
             table.to_excel(writer)
 
         func.save_df(df=table, name=os.path.join(path + self.hosp + '.pkl'))
+
+class ObjednavkyDB():
+    def __int__(self):
+        self.con = pyo.connect(**db_connection)
+        self.cursor = self.con.cursor
+
+    def __del__(self):
+        self.con.close()
+
+    def fetch_records(self, query):
+        self.cursor.execute(query)
+        rows = self.cursor.fetchall()
+        return rows
+
+    def insert(self, query: str, values: list):
+        # example of query: insert into table(col1, ...) values(%s, %s, %s)
+        # values =[title, author, isbn]
+        self.cursor.execute(query, values)
+        self.con.commit()
+
+    def update(self, query: str, values: list):
+        self.cursor.execute(query, values)
+        self.con.commit()
+
 
 
 class OutlookTools:
@@ -118,12 +146,9 @@ class OutlookTools:
             ts = pd.Timestamp(message.senton).strftime('%d_%m_%Y_%I_%M_%S')
             for attachment in message.Attachments:
                 try:
-                    print(attachment.FileName)
                     if re.match(r'.*\.png', attachment.FileName):
-                        print('not downloaded')
                         continue
                     else:
-                        print('downloaded')
                         attachment.SaveASFile(os.path.join(output_path, ts+'_'+attachment.FileName))
                     print(f"attachment {attachment.FileName} from {message.Sender} saved")
                 except Exception as e:

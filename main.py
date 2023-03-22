@@ -15,12 +15,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
+from docx import Document
 
 current_date_time = datetime.now()
 
 outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 otl = OutlookTools(outlook)
-
 path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
 
 #############################################################################################################
@@ -372,6 +372,7 @@ fnsppresov.create_columns_w_dict(key='fakultna nemocnica s poliklinikou j a reim
 fnsppresov_search = pd.DataFrame(fnsppresov.df_all[fnsppresov.final_table_cols])
 
 # save tables
+
 fnsppresov.save_tables(table=fnsppresov_search)
 
 ### FNTT - first load ###
@@ -382,3 +383,51 @@ search_result = otl.find_message(path,
                                  "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + fntt.hosp + '.sk' + "' ")
 otl.save_attachment(fntt.hosp_path, search_result)
 
+fntt.load()
+fntt.clean_tables()
+#fntt.data_check()
+fntt.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]+":"", ',-':'', ',$':'', ',+':'.', '/.*':''}
+fntt.df_all = str_col_replace(fntt.df_all, 'cena', dict_cena)
+fntt.df_all['cena'] = fntt.df_all['cena'].astype(float)
+
+fntt.df_all['datum'] = fntt.df_all['datum'].str.strip()
+fntt.df_all['datum'] = fntt.df_all['datum'].apply(get_dates)
+
+fntt.create_columns_w_dict(key='fakultna nemocnica trnava')
+fntt_search = pd.DataFrame(fntt.df_all[fntt.final_table_cols])
+
+fntt.save_tables(table=fntt_search)
+
+### DFN Kosice - first load ###
+
+dfnkosice = PriameObjednavkyMail('dfnkosice')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + dfnkosice.hosp + '.sk' + "' ")
+otl.save_attachment(dfnkosice.hosp_path, search_result)
+
+dfnkosice.load()
+
+dict_of_tables={}
+for file_name in os.listdir(dfnkosice.hosp_path):
+    if file_name.split(sep='.')[-1] == 'docx':
+        document = Document(os.path.join(dfnkosice.hosp_path, file_name))
+        table = document.tables[0]
+        data = [[cell.text for cell in row.cells] for row in table.rows]
+        df = pd.DataFrame(data)
+        dict_of_tables[file_name] = df
+
+
+##
+result_fnnr = func.load_df(os.path.join(search_data_path + 'fnnitra.pkl'), path=os.getcwd())
+result_fnpresov = func.load_df(os.path.join(search_data_path + 'fnsppresov.pkl'), path=os.getcwd())
+result_fnspza = func.load_df(os.path.join(search_data_path + 'fnspza_all.pkl'), path=os.getcwd())
+result_fntn = func.load_df(os.path.join(search_data_path + 'fntn.pkl'), path=os.getcwd())
+
+
+tab=pd.concat([result_fnnr, result_fnpresov, result_fnspza, result_fntn])
+tab['popis2']=str(tab['popis'])
+
+df = tab[tab['popis2'].str.contains('fortinet')]
