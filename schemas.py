@@ -40,7 +40,8 @@ class PriameObjednavkyMail:
                 doc[key] = func.clean_str_cols(doc[key])
                 doc[key] = clean_str_col_names(doc[key])
                 for col in doc[key].columns.values:
-                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match('(vypracov.*)|(schvalil.*)') == True)].index,
+                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match(
+                        '(vypracov.*)|(schvalil.*)|(.*riaditel.*)|(.*referent.*)|(vysvetlivky:)|(^v stlpci.*uviest.*)') == True)].index,
                                   inplace=True)
                 if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                     doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)

@@ -221,25 +221,7 @@ def load_files(data_path):
     return all_tables
 
 
-def clean_tables(input_list):
-    for i in range(len(input_list)):
-        doc = input_list[i][-1]
-        for key, value in doc.items():
-            doc[key] = doc[key].dropna(axis=1, thresh=3)
-            doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
-            doc[key] = func.clean_str_cols(doc[key])
-            doc[key] = clean_str_col_names(doc[key])
-            if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
-                doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
-                doc[key] = doc[key].dropna(axis=1, thresh=3)
-                if not doc[key].empty:
-                    if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))):
-                        doc[key] = doc[key].drop(doc[key].index[0])
-                    doc[key].columns = doc[key].iloc[0]
-                    doc[key] = doc[key].drop(doc[key].index[0])
-            if not doc[key].empty:
-                input_list[i].append(doc[key])
-    return input_list
+
 
 def create_table(list_of_tables, dictionary):
     final_table = pd.DataFrame(columns=list(dictionary.keys()))
@@ -262,36 +244,37 @@ def create_table(list_of_tables, dictionary):
 
 
 def get_dates(date_string: str):
+    date_string = str(date_string).strip()
     # example: 2022-08-31 00:00:00
-    if re.match(r'^20\d{2}-\d{2}-\d{2}.*', str(date_string)):
+    if re.match(r'^20\d{2}-\d{2}-\d{2}.*', date_string):
         date = date_string.split(' ')[0]
         return pd.Timestamp(year=int(date.split('-')[0]), month=int(date.split('-')[1]),
                             day=int(date.split('-')[2]))
     # example: 31.8.2022 or 31. 8. 2022
-    elif re.match(r'^\d+\.\s*\d+\.\s*20\d{2}$', str(date_string)):
+    elif re.match(r'^\d+\.\s*\d+\.\s*20\d{2}$', date_string):
         date = date_string.strip()
         return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
                             day=int(date.split('.')[0]))
     # example: 31/8/22
-    elif re.match(r'\d+/\d+/\d{2}', str(date_string)):
+    elif re.match(r'\d+/\d+/\d{2}', date_string):
         return pd.Timestamp(year=int('20' + date_string.split('/')[2]), month=int(date_string.split('/')[1]),
                             day=int(date_string.split('/')[0]))
     # example: 05.09.2022-09.09.2022
-    elif re.match(r'\d+\.\d+\.20\d{2}.*-.*\d+\.\d+\.20\d{2}.*', str(date_string)):
+    elif re.match(r'\d+\.\d+\.20\d{2}.*-.*\d+\.\d+\.20\d{2}.*', date_string):
         date = date_string.split('-')[0].strip()
         return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
                             day=int(date.split('.')[0]))
     # example: 2.-6.10.
-    elif re.match(r'^\d+\.-\d+\.\d+.*', str(date_string)):
+    elif re.match(r'^\d+\.-\d+\.\d+.*', date_string):
         date = date_string.split('-')[1].strip()
         return pd.Timestamp(year=2017, month=int(date.split('.')[1]),
                             day=int(date.split('.')[0]))
     # example: 12.-16.10.2018
-    elif re.match(r'^\d+.*-.*\d+\.\d+\..*20\d{2}', str(date_string)):
+    elif re.match(r'^\d+.*-.*\d+\.\d+\..*20\d{2}', date_string):
         date = date_string.split('-')[1].strip()
         return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
                             day=int(date.split('.')[0]))
-    elif re.match(r'^\d+.*\s.*\d+\.\d+\..*20\d{2}', str(date_string)):
+    elif re.match(r'^\d+.*\s.*\d+\.\d+\..*20\d{2}', date_string):
         date = date_string.split(' ')[1].strip()
         return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
                             day=int(date.split('.')[0]))

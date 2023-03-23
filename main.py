@@ -409,25 +409,147 @@ search_result = otl.find_message(path,
 otl.save_attachment(dfnkosice.hosp_path, search_result)
 
 dfnkosice.load()
+dfnkosice.clean_tables()
+dfnkosice.data_check()
+dfnkosice.create_table(stand_column_names=stand_column_names)
 
-dict_of_tables={}
+dict_cena = {"[a-z]|'|\s|[\(\)]+":"", ',-':'', ',$':'', ',+':'.', '/.*':''}
+dfnkosice.df_all = str_col_replace(dfnkosice.df_all, 'cena', dict_cena)
+dfnkosice.df_all['cena'] = dfnkosice.df_all['cena'].astype(float)
+
+dfnkosice.df_all['datum'] = dfnkosice.df_all['datum'].str.strip()
+dfnkosice.df_all['datum'] = dfnkosice.df_all['datum'].apply(get_dates)
+
+
+# load and append tables from docx files
 for file_name in os.listdir(dfnkosice.hosp_path):
     if file_name.split(sep='.')[-1] == 'docx':
         document = Document(os.path.join(dfnkosice.hosp_path, file_name))
         table = document.tables[0]
         data = [[cell.text for cell in row.cells] for row in table.rows]
         df = pd.DataFrame(data)
-        dict_of_tables[file_name] = df
+
+        # data cleaning
+        df.columns = df.iloc[0]
+        df.drop(index=df.index[0], axis=0, inplace=True)
+        df.drop('P.č.', axis=1, inplace=True)
+        df.columns = ['kategoria', 'cena', 'objednavka_predmet', 'dodavatel_nazov']
+
+        df = func.clean_str_cols(df)
+        df['cena'] = df['cena'].str.replace('[a-z]|\s', '', regex=True).replace('\.', '', regex=True).replace(',', '.',
+                                                                                                              regex=True)
+        df['cena'] = df['cena'].astype(float)
+        df['file'] = file_name.split(sep='.')[0]
+        df['insert_date'] = datetime.now()
+        dfnkosice.df_all = pd.concat([dfnkosice.df_all, df], ignore_index=True)
+
+dfnkosice.create_columns_w_dict(key='detska fakultna nemocnica kosice')
+dfnkosice_search = pd.DataFrame(dfnkosice.df_all[dfnkosice.final_table_cols])
+
+dfnkosice.save_tables(table=dfnkosice_search)
+
+### UNB - first load ###
+
+unb = PriameObjednavkyMail('unb')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + unb.hosp + '.sk' + "' ")
+otl.save_attachment(unb.hosp_path, search_result)
+
+unb.load()
+unb.clean_tables()
+unb.data_check()
+unb.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': ''}
+unb.df_all = str_col_replace(unb.df_all, 'cena', dict_cena)
+unb.df_all['cena'] = np.where(unb.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              unb.df_all['cena'].str.replace('.', '', 1), unb.df_all['cena'])
+unb.df_all['cena'] = unb.df_all['cena'].astype(float)
+
+unb.df_all['datum'] = unb.df_all['datum'].apply(get_dates)
+
+unb.create_columns_w_dict(key='univerzitna nemocnica bratislava')
+unb_search = pd.DataFrame(unb.df_all[unb.final_table_cols])
+
+unb.save_tables(table=unb_search)
+
+### UNLP KE - first load ###
+
+unlp = PriameObjednavkyMail('unlp')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + unlp.hosp + '.sk' + "' ")
+otl.save_attachment(unlp.hosp_path, search_result)
+
+unlp.load()
+unlp.clean_tables()
+unlp.data_check()
+unlp.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\++": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-':'', '':'0'}
+unlp.df_all = str_col_replace(unlp.df_all, 'cena', dict_cena)
+unlp.df_all['cena'] = np.where(unlp.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              unlp.df_all['cena'].str.replace('.', '', 1), unlp.df_all['cena'])
+unlp.df_all['cena'] = unlp.df_all['cena'].astype(float)
 
 
-##
-result_fnnr = func.load_df(os.path.join(search_data_path + 'fnnitra.pkl'), path=os.getcwd())
-result_fnpresov = func.load_df(os.path.join(search_data_path + 'fnsppresov.pkl'), path=os.getcwd())
-result_fnspza = func.load_df(os.path.join(search_data_path + 'fnspza_all.pkl'), path=os.getcwd())
-result_fntn = func.load_df(os.path.join(search_data_path + 'fntn.pkl'), path=os.getcwd())
+unlp.df_all['datum'] = unlp.df_all['datum'].apply(get_dates)
+
+unlp.create_columns_w_dict(key='univerzitna nemocnica l pasteura kosice')
+unlp_search = pd.DataFrame(unlp.df_all[unlp.final_table_cols])
+
+unlp.save_tables(table=unlp_search)
+
+### UNM - first load ###
+
+unm = PriameObjednavkyMail('unm')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + unm.hosp + '.sk' + "' ")
+otl.save_attachment(unm.hosp_path, search_result)
+
+unm.load()
+unm.clean_tables()
+unm.data_check()
+unm.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\++": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-':'', '':'0'}
+unm.df_all = str_col_replace(unm.df_all, 'cena', dict_cena)
+unm.df_all['cena'] = np.where(unm.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              unm.df_all['cena'].str.replace('.', '', 1), unm.df_all['cena'])
+unm.df_all['cena'] = unm.df_all['cena'].astype(float)
+
+unm.df_all['datum'] = unm.df_all['datum'].apply(get_dates)
+
+unm.create_columns_w_dict(key='univerzitna nemocnica martin')
+unm_search = pd.DataFrame(unm.df_all[unm.final_table_cols])
+
+unm.save_tables(table=unm_search)
+
+### DFNBB - first load ###
+
+dfnbb = PriameObjednavkyMail('dfnbb')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + dfnbb.hosp + '.sk' + "' ")
+otl.save_attachment(dfnbb.hosp_path, search_result)
+
+dfnbb.load()
+dfnbb.clean_tables()
+dfnbb.data_check()
+dfnbb.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-':'', '':'0'}
+dfnbb.df_all = str_col_replace(dfnbb.df_all, 'cena', dict_cena)
+dfnbb.df_all['cena'] = dfnbb.df_all['cena'].astype(float)
+
+dfnbb.df_all['datum'] = dfnbb.df_all['datum'].apply(get_dates)
+
+dfnbb.create_columns_w_dict(key='detska fakultna nemocnica s poliklinikou banska bystrica')
+dfnbb_search = pd.DataFrame(dfnbb.df_all[dfnbb.final_table_cols])
+
+dfnbb.save_tables(table=dfnbb_search)
 
 
-tab=pd.concat([result_fnnr, result_fnpresov, result_fnspza, result_fntn])
-tab['popis2']=str(tab['popis'])
 
-df = tab[tab['popis2'].str.contains('fortinet')]
