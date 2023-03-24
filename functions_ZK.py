@@ -204,7 +204,7 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx'):
+        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx', 'jpg'):
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
@@ -220,7 +220,25 @@ def load_files(data_path):
     print('Loading took: ', datetime.now()-loading_start)
     return all_tables
 
-
+def clean_tables(input_list):
+    for i in range(len(input_list)):
+        doc = input_list[i][-1]
+        for key, value in doc.items():
+            doc[key] = doc[key].dropna(axis=1, thresh=3)
+            doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
+            doc[key] = func.clean_str_cols(doc[key])
+            doc[key] = clean_str_col_names(doc[key])
+            if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
+                doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
+                doc[key] = doc[key].dropna(axis=1, thresh=3)
+                if not doc[key].empty:
+                    if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))):
+                        doc[key] = doc[key].drop(doc[key].index[0])
+                    doc[key].columns = doc[key].iloc[0]
+                    doc[key] = doc[key].drop(doc[key].index[0])
+            if not doc[key].empty:
+                input_list[i].append(doc[key])
+    return input_list
 
 
 def create_table(list_of_tables, dictionary):
@@ -228,9 +246,12 @@ def create_table(list_of_tables, dictionary):
     for i in range(len(list_of_tables)):  # all excel files
         for j in range(2, len(list_of_tables[i])):  # all sheets
             include = False
+            cena_s_dph = 'nie'
             for k in range(len(list_of_tables[i][j].columns.values)):  # all columns
                 for key, value in dictionary.items():
                     if list_of_tables[i][j].columns.values[k] in value:
+                        if list_of_tables[i][j].columns.values[k] == 'hodnota objednavky v eur s dph':
+                            cena_s_dph = 'ano'
                         include = True
                         list_of_tables[i][j].columns = list_of_tables[i][j].columns.str.replace(
                             list_of_tables[i][j].columns.values[k], key, regex=False)
@@ -238,7 +259,8 @@ def create_table(list_of_tables, dictionary):
                 df = list_of_tables[i][j].reset_index(drop=True)
                 df['file'] = list_of_tables[i][0]
                 df['insert_date'] = datetime.now()
-                cols = list(set(list_of_tables[i][j].columns.values).intersection(final_table.columns.values))+['file', 'insert_date']
+                df['cena_s_dph'] = cena_s_dph
+                cols = list(set(list_of_tables[i][j].columns.values).intersection(final_table.columns.values))+['file', 'insert_date', 'cena_s_dph']
                 final_table = pd.concat([final_table, df[cols]], ignore_index=True)
     return final_table
 

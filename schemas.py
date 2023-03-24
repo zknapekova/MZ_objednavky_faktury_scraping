@@ -21,7 +21,7 @@ class PriameObjednavkyMail:
         self.all_tables_list = []
         self.all_tables_list_cleaned = []
         self.popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
-                      'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych']
+                      'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych', 'cena_s_dph']
         self.dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
         self.all_columns_names = []
         self.df_all = None
@@ -41,7 +41,7 @@ class PriameObjednavkyMail:
                 doc[key] = clean_str_col_names(doc[key])
                 for col in doc[key].columns.values:
                     doc[key].drop(doc[key][(doc[key][col].astype(str).str.match(
-                        '(vypracov.*)|(schvalil.*)|(.*riaditel.*)|(.*referent.*)|(vysvetlivky:)|(^v stlpci.*uviest.*)') == True)].index,
+                        '(vypracov.*)|(schvalil.*)|(.*riaditel.*)|(.*referent.*)|(vysvetlivky:)|(^v stlpci.*uviest.*)|(.*@.*\.sk.*)|(^informacia o.*)|(^kontakt:.*)') == True)].index,
                                   inplace=True)
                 if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                     doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)

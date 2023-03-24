@@ -551,5 +551,76 @@ dfnbb_search = pd.DataFrame(dfnbb.df_all[dfnbb.final_table_cols])
 
 dfnbb.save_tables(table=dfnbb_search)
 
+### NOU - first load ###
 
+nou = PriameObjednavkyMail('nou')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nou.hosp + '.sk' + "' ")
+otl.save_attachment(nou.hosp_path, search_result)
+nou.load()
+nou.clean_tables()
+nou.data_check()
+
+nou.create_table(stand_column_names=stand_column_names)
+
+# load pdf files
+dict_pdf_files = {}
+cols = ['kategoria', 'objednavka_predmet', 'cena', 'datum', 'zdroj_financovania', 'kratke zdovodnenie']
+
+for file_name in os.listdir(nou.hosp_path):
+    if file_name.split(sep='.')[-1] == 'pdf':
+        list_of_pages = camelot.read_pdf(os.path.join(nou.hosp_path, file_name), pages='all')
+        df_conc_pages = pd.DataFrame(columns=cols)
+        list_of_pages[0].df.drop(list_of_pages[0].df.index[0], inplace=True, axis=0)
+
+        for i in range(len(list_of_pages)):
+            list_of_pages[i].df.columns = cols
+            list_of_pages[i].df['file'] = file_name
+            list_of_pages[i].df['insert_date'] = datetime.now()
+            df_conc_pages = pd.concat([df_conc_pages, list_of_pages[i].df], ignore_index=True)
+
+        dict_pdf_files[file_name] = df_conc_pages
+
+# create df with all pdf files and clean it
+df_all_pdf = pd.concat([table for table in dict_pdf_files.values()], ignore_index=True)
+df_all_pdf = func.clean_str_cols(df_all_pdf)
+
+nou.df_all = pd.concat([nou.df_all, df_all_pdf], ignore_index=True)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-':'', '':'0'}
+nou.df_all = str_col_replace(nou.df_all, 'cena', dict_cena)
+nou.df_all['cena'] = nou.df_all['cena'].astype(float)
+
+nou.df_all['datum'] = nou.df_all['datum'].apply(get_dates)
+
+nou.create_columns_w_dict(key='narodny onkologicky ustav')
+nou_search = pd.DataFrame(nou.df_all[nou.final_table_cols])
+
+nou.save_tables(table=nou_search)
+
+### NUSCH - first load ###
+
+nusch= PriameObjednavkyMail('nusch')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nusch.hosp + '.sk' + "' ")
+otl.save_attachment(nusch.hosp_path, search_result)
+
+nusch.load()
+nusch.clean_tables()
+nusch.data_check()
+
+nusch.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-':'', '':'0', '=.*':'',
+             '.+\d{2}:\d{2}:\d{2}$': '0'}
+nusch.df_all = str_col_replace(nusch.df_all, 'cena', dict_cena)
+nusch.df_all['cena'] = nusch.df_all['cena'].astype(float)
+
+nusch.df_all['datum'] = nusch.df_all['datum'].apply(get_dates)
+nusch.create_columns_w_dict(key='narodny ustav srdcovych a cievnych chorob as')
+nusch_search = pd.DataFrame(nusch.df_all[nusch.final_table_cols])
+
+nusch.save_tables(table=nusch_search)
 
