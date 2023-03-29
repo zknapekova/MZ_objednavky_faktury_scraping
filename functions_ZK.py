@@ -204,7 +204,7 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx', 'jpg'):
+        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx', 'jpg', 'htm'):
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
@@ -220,26 +220,6 @@ def load_files(data_path):
     print('Loading took: ', datetime.now()-loading_start)
     return all_tables
 
-def clean_tables(input_list):
-    for i in range(len(input_list)):
-        doc = input_list[i][-1]
-        for key, value in doc.items():
-            doc[key] = doc[key].dropna(axis=1, thresh=3)
-            doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
-            doc[key] = func.clean_str_cols(doc[key])
-            doc[key] = clean_str_col_names(doc[key])
-            if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
-                doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
-                doc[key] = doc[key].dropna(axis=1, thresh=3)
-                if not doc[key].empty:
-                    if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))):
-                        doc[key] = doc[key].drop(doc[key].index[0])
-                    doc[key].columns = doc[key].iloc[0]
-                    doc[key] = doc[key].drop(doc[key].index[0])
-            if not doc[key].empty:
-                input_list[i].append(doc[key])
-    return input_list
-
 
 def create_table(list_of_tables, dictionary):
     final_table = pd.DataFrame(columns=list(dictionary.keys()))
@@ -250,7 +230,7 @@ def create_table(list_of_tables, dictionary):
             for k in range(len(list_of_tables[i][j].columns.values)):  # all columns
                 for key, value in dictionary.items():
                     if list_of_tables[i][j].columns.values[k] in value:
-                        if list_of_tables[i][j].columns.values[k] == 'hodnota objednavky v eur s dph':
+                        if list_of_tables[i][j].columns.values[k] in ('hodnota objednavky v eur s dph', 'hodnota zakazky      s dph'):
                             cena_s_dph = 'ano'
                         include = True
                         list_of_tables[i][j].columns = list_of_tables[i][j].columns.str.replace(
@@ -319,15 +299,15 @@ def fnspza_data_cleaning(input_table):
 
     # cena
     dict_cena = {'^mc\s*': '', '[,|\.]-.*': '', '[a-z]+\.[a-z]*\s*': '', "[a-z]|'|\s|-|[\(\)]+": '', ",,": '.',
-                       ",": '.', ".*[:].*": '0',
-                       "=.*": ''}
+                 ",": '.', ".*[:].*": '0',
+                 "=.*": ''}
     for original, replacement in dict_cena.items():
         fnspza_all2['cena'] = fnspza_all2['cena'].replace(original, replacement, regex=True)
 
     fnspza_all2['cena'] = np.where(fnspza_all2['cena'].str.match(r'\d*\.\d*\.\d*'),
                                    fnspza_all2['cena'].str.replace('.', '', 1), fnspza_all2['cena'])
     fnspza_all2['cena'] = fnspza_all2['cena'].astype(float)
-    print('price converted to float successfully')
+    print('price was converted to float successfully')
 
     # rok objednavky - 4 outlier values 2000, 2048, 2033 and 2026
     fnspza_all2['rok_objednavky'] = fnspza_all2['datum'].str.extract(r'(20\d{2})')
@@ -337,8 +317,10 @@ def fnspza_data_cleaning(input_table):
 
     # datum objednavky
     dict_datum_objednavky = {'210': ['201', True], '217': ['2017', True], '[a-z]': ['', True], '\(': ['', True],
-                             '\)': ['', True], '\s+': [' ', True], '..': ['.', False], ': ': ['', False], '.,': ['.', False],
-                             '5019': ['2019', True], ',': ['.', False], '201/8': ['2018', True], '20\.17': ['2017', True],
+                             '\)': ['', True], '\s+': [' ', True], '..': ['.', False], ': ': ['', False],
+                             '.,': ['.', False],
+                             '5019': ['2019', True], ',': ['.', False], '201/8': ['2018', True],
+                             '20\.17': ['2017', True],
                              '209': ['2019', True], '19.12.202$': ['19.12.2022', True]
                              }
     for key, value in dict_datum_objednavky.items():
@@ -346,23 +328,15 @@ def fnspza_data_cleaning(input_table):
 
     fnspza_all2['datum'] = fnspza_all2['datum'].str.strip()
 
-    fnspza_all2['datum_adj'] = fnspza_all2['datum'].apply(get_dates)
+    fnspza_all2['datum'] = fnspza_all2['datum'].apply(get_dates)
 
-    fnspza_all2['datum_adj'] = fnspza_all2.apply(
+    fnspza_all2['datum'] = fnspza_all2.apply(
         lambda row: pd.Timestamp(year=row['rok_objednavky_num'], month=1, day=1) if (
-                (pd.isna(row['rok_objednavky']) == False) & (pd.isnull(row['datum_adj']) == True)) else row[
-            'datum_adj'], axis=1)
-    print('date converted to timestamp successfully')
+                (pd.isna(row['rok_objednavky']) == False) & (pd.isnull(row['datum']) == True)) else row[
+            'datum'], axis=1)
+    print('date was converted to timestamp successfully')
 
-    # popis
-    popis_list = ['objednavka_predmet', 'kategoria', 'objednavka_cislo', 'zdroj_financovania', 'balenie',
-                  'sukl_kod', 'mnozstvo', 'poznamka', 'odkaz_na_zmluvu', 'pocet_oslovenych']
-    dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
-
-    fnspza_all3=fnspza_all2.drop_duplicates()
-
-    fnspza_all3['popis'] = fnspza_all3[popis_list].T.apply(lambda x: x.dropna().to_dict())
-    fnspza_all3['dodavatel'] = fnspza_all3[dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
+    fnspza_all3 = fnspza_all2.drop_duplicates()
 
     return fnspza_all3
 

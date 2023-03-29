@@ -6,6 +6,8 @@ from functions_ZK import *
 import mysql.connector as pyo
 from mysql_config import *
 import copy
+from sqlalchemy import create_engine
+import math
 
 
 class PriameObjednavkyMail:
@@ -35,19 +37,18 @@ class PriameObjednavkyMail:
         for i in range(len(self.all_tables_list_cleaned)):
             doc = self.all_tables_list_cleaned[i][-1]
             for key, value in doc.items():
-                doc[key] = doc[key].dropna(axis=1, thresh=3)
-                doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
                 doc[key] = func.clean_str_cols(doc[key])
                 doc[key] = clean_str_col_names(doc[key])
                 for col in doc[key].columns.values:
-                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match(
-                        '(vypracov.*)|(schvalil.*)|(.*riaditel.*)|(.*referent.*)|(vysvetlivky:)|(^v stlpci.*uviest.*)|(.*@.*\.sk.*)|(^informacia o.*)|(^kontakt:.*)') == True)].index,
+                    doc[key].drop(doc[key][(doc[key][col].astype(str).str.match(clean_table_regex) == True)].index,
                                   inplace=True)
+                doc[key] = doc[key].dropna(axis=1, thresh=math.ceil(doc[key].shape[0]*0.1))
+                doc[key] = doc[key].dropna(thresh=2).reset_index(drop=True)
                 if ('unnamed' in '|'.join(map(str, doc[key].columns))) or (pd.isna(doc[key].columns).any()):
                     doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
-                    doc[key] = doc[key].dropna(axis=1, thresh=3)
+                    doc[key] = doc[key].dropna(axis=1, thresh=math.ceil(doc[key].shape[0]*0.1))
                     if not doc[key].empty:
-                        if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))):
+                        if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))): # remove Informacie o vystavení objednávok
                             doc[key] = doc[key].drop(doc[key].index[0])
                         doc[key].columns = doc[key].iloc[0]
                         doc[key] = doc[key].drop(doc[key].index[0])
@@ -72,10 +73,12 @@ class PriameObjednavkyMail:
     def create_table(self, stand_column_names):
         df = create_table(self.all_tables_list_cleaned, stand_column_names)
         self.df_all = df.drop_duplicates()
+        self.df_all.drop(self.df_all[pd.isna(self.df_all['objednavka_predmet']) & pd.isna(self.df_all['cena']) & pd.isna(
+            self.df_all['datum'])].index, axis=0, inplace=True)
 
     def create_columns_w_dict(self, key):
         self.df_all['objednavatel'] = self.hosp
-        self.df_all['link'] = dict[key]['zverejnovanie_objednavok_faktur_rozne']
+        self.df_all['link'] = dict_all[key]['zverejnovanie_objednavok_faktur_rozne']
         self.df_all['popis'] = self.df_all[self.popis_list].T.apply(lambda x: x.dropna().to_dict())
         self.df_all['dodavatel'] = self.df_all[self.dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
 
@@ -86,29 +89,57 @@ class PriameObjednavkyMail:
 
         func.save_df(df=table, name=os.path.join(path + self.hosp + '.pkl'))
 
-class ObjednavkyDB():
-    def __int__(self):
-        self.con = pyo.connect(**db_connection)
-        self.cursor = self.con.cursor
+
+class ObjednavkyDB:
+    def __init__(self, db_connection):
+        # for mysql connector
+        # self.db_connection = db_connection
+        # self.con = pyo.connect(**db_connection)
+        # self.cursor = self.con.cursor()
+        #self.cursor.execute('set global max_allowed_packet=67108864')
+
+        self.engine = create_engine(
+            f"mysql+mysqlconnector://{db_connection['user']}:{db_connection['password']}@{db_connection['host']}:{db_connection['port']}/{db_connection['database']}",
+            echo=False)
+        self.engine.execute('set global max_allowed_packet=67108864')
 
     def __del__(self):
         self.con.close()
 
-    def fetch_records(self, query):
-        self.cursor.execute(query)
-        rows = self.cursor.fetchall()
-        return rows
+    def fetch_records(self, query: str):
+        # self.cursor.execute(query)
+        # rows = self.cursor.fetchall()
+        return pd.read_sql(query, con=self.con)
 
     def insert(self, query: str, values: list):
         # example of query: insert into table(col1, ...) values(%s, %s, %s)
         # values =[title, author, isbn]
-        self.cursor.execute(query, values)
-        self.con.commit()
+        try:
+            self.cursor.execute(query, values)
+            self.con.commit()
+        except Exception as e:
+            print(e)
+
+    def insert_table(self, table_name: str, df: pd.DataFrame, if_exists: str = 'append', index: bool = False, **kwargs):
+        '''
+        :param table_name: table in database in which we want to insert data
+        :param df: table with data
+        :param if_exists: 'append' or 'replace'
+        :param index: True or False
+        '''
+        dict_cols = df.columns[df.applymap(lambda x: isinstance(x, dict)).any()]
+        df = df.apply(lambda x: x.astype(str) if x.name in dict_cols else x)
+        try:
+            df.to_sql(name=table_name, con=self.engine, if_exists='append', index=False, **kwargs)
+        except Exception as e:
+            print(e)
 
     def update(self, query: str, values: list):
-        self.cursor.execute(query, values)
-        self.con.commit()
-
+        try:
+            self.cursor.execute(query, values)
+            self.con.commit()
+        except Exception as e:
+            print(e)
 
 
 class OutlookTools:
@@ -135,6 +166,7 @@ class OutlookTools:
         '''
         messages_all = folder_path.Items
         return messages_all.Restrict(condition)
+
 
     def save_attachment(self, output_path, messages):
         '''
