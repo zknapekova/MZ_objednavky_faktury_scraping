@@ -4,7 +4,7 @@ import pandas as pd
 from config import *
 from functions_ZK import *
 import mysql.connector as pyo
-from mysql_config import *
+from mysql_config import objednavky_db_connection
 import copy
 from sqlalchemy import create_engine
 import math
@@ -180,7 +180,7 @@ class OutlookTools:
             ts = pd.Timestamp(message.senton).strftime('%d_%m_%Y_%I_%M_%S')
             for attachment in message.Attachments:
                 try:
-                    if re.match(r'.*\.png', attachment.FileName):
+                    if re.match(r'.*\.((png)|(jpg))', attachment.FileName):
                         continue
                     else:
                         attachment.SaveASFile(os.path.join(output_path, ts+'_'+attachment.FileName))

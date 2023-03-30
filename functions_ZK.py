@@ -17,10 +17,12 @@ import functionss as func
 import os
 import shutil
 from win32com import client as wc
+import logging
+logger = logging.getLogger(__name__)
+
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 pd.options.mode.chained_assignment = None  # default='warn'
-
 
 
 def preprocess_image(img, resize={'apply': True, 'scale_percent': 220}, gray_scale=True,
@@ -204,11 +206,15 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('pdf', 'png', 'jpeg', 'pkl', 'docx', 'jpg', 'htm'):
+        if file_name.split(sep='.')[-1] in ('png', 'jpeg', 'pkl', 'docx', 'jpg', 'htm'):
+            continue
+        elif file_name.split(sep='.')[-1] in ('pdf', 'docx'):
+            logger.warning(f'PDF or DOCX file detected: {file_name}. Needs to be handled separately.')
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)
         elif file_name.split(sep='.')[-1] == 'doc':
+            logger.warning(f'Word file detected: {file_name}. Needs to be handled separately.')
             w = wc.Dispatch('Word.Application')
             doc = w.Documents.Open(os.path.join(data_path, file_name))
             doc.SaveAs(os.path.join(data_path, file_name.split('.')[-2] + '.docx'), 16)
@@ -247,6 +253,7 @@ def create_table(list_of_tables, dictionary):
 
 def get_dates(date_string: str):
     date_string = str(date_string).strip()
+    date_string = date_string.replace(',', '.')
     # example: 2022-08-31 00:00:00
     if re.match(r'^20\d{2}-\d{2}-\d{2}.*', date_string):
         date = date_string.split(' ')[0]

@@ -323,19 +323,29 @@ result_df['insert_date'] = datetime.now()
 
 result_df['ico dodavatela'] = result_df['ico dodavatela'].str.replace('\..*', '', regex=True)
 result_df['cena'] = result_df['cena s dph (EUR)'].astype(float)
-result_df['datum vyhotovenia'] = result_df['datum vyhotovenia'].str.strip()
 result_df['datum'] = result_df['datum vyhotovenia'].apply(get_dates)
+result_df['cena_s_dph'] = 'ano'
+result_df['objednavka_predmet'] = result_df['popis']
 
 fntn.df_all = result_df
 fntn.dodavatel_list = ['nazov dodavatela', 'ico dodavatela']
-fntn.popis_list = ['popis', 'cislo objednavky', 'cislo zmluvy', 'schvalil']
+fntn.popis_list = ['popis', 'cislo objednavky', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
 
 fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
 
 fntn_search = pd.DataFrame(fntn.df_all[fntn.final_table_cols])
 fntn.save_tables(table=fntn_search)
 
-db.insert_table(table_name='priame_objednavky', df=fntn_search, if_exists='append', index=False)
+df = fntn.df_all.drop(columns=['schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela', 'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'])
+df['objednavka_cislo'] = df['cislo objednavky']
+df['dodavatel_ico'] = df['ico dodavatela']
+df['dodavatel_nazov'] = df['nazov dodavatela']
+
+df.drop(columns=['cislo objednavky', 'ico dodavatela', 'nazov dodavatela'], inplace=True)
+
+db.insert_table(table_name='priame_objednavky', df=df, if_exists='append', index=False)
+
+
 
 # FNSP Presov - first load ###
 
@@ -450,7 +460,7 @@ unb.clean_tables()
 unb.data_check()
 unb.create_table(stand_column_names=stand_column_names)
 
-dict_cena = {"[a-z]|'|\s|[\(\)]+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '_':0}
+dict_cena = {"[a-z]|'|\s|[\(\)]+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '_':'0'}
 unb.df_all = str_col_replace(unb.df_all, 'cena', dict_cena)
 unb.df_all['cena'] = np.where(unb.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
                               unb.df_all['cena'].str.replace('\.', '', 1, regex=True), unb.df_all['cena'])
@@ -594,6 +604,33 @@ nou_search = pd.DataFrame(nou.df_all[nou.final_table_cols])
 nou.save_tables(table=nou_search)
 db.insert_table(table_name='priame_objednavky', df=nou.df_all, if_exists='append', index=False)
 
+# NOUSK - first load ###
+
+nou = PriameObjednavkyMail('nou')
+
+search_result = otl.find_message(path,
+                                 "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nou.hosp + 'sk.sk' + "' ")
+otl.save_attachment(nou.hosp_path, search_result)
+
+nou.load()
+nou.clean_tables()
+nou.data_check()
+nou.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'}
+nou.df_all = str_col_replace(nou.df_all, 'cena', dict_cena)
+nou.df_all['cena'] = np.where(nou.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              nou.df_all['cena'].str.replace('\.', '', 1, regex=True), nou.df_all['cena'])
+nou.df_all['cena'] = nou.df_all['cena'].astype(float)
+nou.df_all['datum'] = nou.df_all['datum'].apply(get_dates)
+
+nou.create_columns_w_dict(key='narodny onkologicky ustav')
+nou_search = pd.DataFrame(nou.df_all[nou.final_table_cols])
+
+nou.save_tables(table=nou_search)
+db.insert_table(table_name='priame_objednavky', df=nou.df_all, if_exists='append', index=False)
+
+
 # NUSCH - first load ###
 
 nusch = PriameObjednavkyMail('nusch')
@@ -608,8 +645,7 @@ nusch.data_check()
 nusch.create_table(stand_column_names=stand_column_names)
 
 dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0',
-             '=.*': '',
-             '.+\d{2}:\d{2}:\d{2}$': '0'}
+             '=.*': '', '.+\d{2}:\d{2}:\d{2}$': '0'}
 nusch.df_all = str_col_replace(nusch.df_all, 'cena', dict_cena)
 nusch.df_all['cena'] = nusch.df_all['cena'].astype(float)
 
@@ -685,6 +721,8 @@ suscch.create_table(stand_column_names=stand_column_names)
 
 dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'}
 suscch.df_all = str_col_replace(suscch.df_all, 'cena', dict_cena)
+suscch.df_all['cena'] = suscch.df_all['cena'].astype(float)
+
 suscch.df_all['datum'] = suscch.df_all['datum'].str.strip()
 suscch.df_all['datum'] = suscch.df_all['datum'].apply(get_dates)
 
@@ -694,8 +732,63 @@ suscch_search = pd.DataFrame(suscch.df_all[suscch.final_table_cols])
 db.insert_table(table_name='priame_objednavky', df=suscch.df_all, if_exists='append', index=False)
 suscch.save_tables(table=suscch_search)
 
-#
-df = db.fetch_records('select * from objednavky.priame_objednavky')
-func.save_df(df=df[['objednavatel', 'cena', 'datum', 'dodavatel', 'popis', 'insert_date', 'file', 'link']], name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
+# INMM - first load ###
+
+inmm = PriameObjednavkyMail('inmm')
+
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + inmm.hosp + '.sk' + "' ")
+otl.save_attachment(inmm.hosp_path, search_result)
+
+
+inmm.load()
+inmm.clean_tables()
+inmm.data_check()
+inmm.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'}
+inmm.df_all = str_col_replace(inmm.df_all, 'cena', dict_cena)
+inmm.df_all['cena'] = np.where(inmm.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              inmm.df_all['cena'].str.replace('\.', '', 1, regex=True), inmm.df_all['cena'])
+inmm.df_all['cena'] = inmm.df_all['cena'].astype(float)
+
+inmm.df_all['datum'] = inmm.df_all['datum'].str.strip()
+inmm.df_all['datum'] = inmm.df_all['datum'].apply(get_dates)
+
+inmm.create_columns_w_dict(key='institut nuklearnej a molekularnej mediciny kosice')
+inmm_search = pd.DataFrame(inmm.df_all[inmm.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=inmm.df_all, if_exists='append', index=False)
+inmm.save_tables(table=inmm_search)
+
+
+# NURCH - first load ###
+
+nurch = PriameObjednavkyMail('nurch')
+
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nurch.hosp + '.sk' + "' ")
+otl.save_attachment(nurch.hosp_path, search_result)
+
+nurch.load()
+nurch.clean_tables()
+nurch.data_check()
+nurch.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'}
+nurch.df_all = str_col_replace(nurch.df_all, 'cena', dict_cena)
+nurch.df_all['cena'] = np.where(nurch.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              nurch.df_all['cena'].str.replace('\.', '', 1, regex=True), nurch.df_all['cena'])
+nurch.df_all['cena'] = nurch.df_all['cena'].astype(float)
+
+nurch.df_all['datum'] = nurch.df_all['datum'].apply(get_dates)
+nurch.create_columns_w_dict(key='narodny ustav reumatickych chorob piestany')
+nurch_search = pd.DataFrame(nurch.df_all[nurch.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=nurch.df_all, if_exists='append', index=False)
+nurch.save_tables(table=nurch_search)
+
+
+
+
+func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
 
 
