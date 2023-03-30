@@ -82,6 +82,9 @@ class PriameObjednavkyMail:
         self.df_all['popis'] = self.df_all[self.popis_list].T.apply(lambda x: x.dropna().to_dict())
         self.df_all['dodavatel'] = self.df_all[self.dodavatel_list].T.apply(lambda x: x.dropna().to_dict())
 
+        dict_cols = self.df_all.columns[self.df_all.applymap(lambda x: isinstance(x, dict)).any()]
+        self.df_all = self.df_all.apply(lambda x: x.astype(str) if x.name in dict_cols else x)
+
     def save_tables(self, table, path=search_data_path):
         with pd.ExcelWriter(os.path.join(path + self.hosp + '.xlsx'), engine='xlsxwriter',
                             engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
@@ -92,16 +95,14 @@ class PriameObjednavkyMail:
 
 class ObjednavkyDB:
     def __init__(self, db_connection):
-        # for mysql connector
-        # self.db_connection = db_connection
-        # self.con = pyo.connect(**db_connection)
-        # self.cursor = self.con.cursor()
-        #self.cursor.execute('set global max_allowed_packet=67108864')
+        self.db_connection = db_connection
+        self.con = pyo.connect(**db_connection)
+        self.cursor = self.con.cursor()
+        self.cursor.execute('set global max_allowed_packet=67108864')
 
         self.engine = create_engine(
             f"mysql+mysqlconnector://{db_connection['user']}:{db_connection['password']}@{db_connection['host']}:{db_connection['port']}/{db_connection['database']}",
             echo=False)
-        self.engine.execute('set global max_allowed_packet=67108864')
 
     def __del__(self):
         self.con.close()

@@ -305,7 +305,7 @@ def fnspza_data_cleaning(input_table):
         fnspza_all2['cena'] = fnspza_all2['cena'].replace(original, replacement, regex=True)
 
     fnspza_all2['cena'] = np.where(fnspza_all2['cena'].str.match(r'\d*\.\d*\.\d*'),
-                                   fnspza_all2['cena'].str.replace('.', '', 1), fnspza_all2['cena'])
+                                   fnspza_all2['cena'].str.replace('\.', '', 1, regex=True), fnspza_all2['cena'])
     fnspza_all2['cena'] = fnspza_all2['cena'].astype(float)
     print('price was converted to float successfully')
 
@@ -321,7 +321,7 @@ def fnspza_data_cleaning(input_table):
                              '.,': ['.', False],
                              '5019': ['2019', True], ',': ['.', False], '201/8': ['2018', True],
                              '20\.17': ['2017', True],
-                             '209': ['2019', True], '19.12.202$': ['19.12.2022', True]
+                             '209': ['2019', True], '19.12.202$': ['19.12.2022', True], '2048': ['2018', True]
                              }
     for key, value in dict_datum_objednavky.items():
         fnspza_all2['datum'] = fnspza_all2['datum'].replace(key, value[0], regex=value[1])
@@ -355,3 +355,10 @@ def str_col_replace(table, column, dictionary):
     for original, replacement in dictionary.items():
         table[column] = table[column].replace(original, replacement, regex=True)
     return table
+
+def split_dataframe(df, chunk_size = 10000):
+    chunks = list()
+    num_chunks = len(df) // chunk_size + 1
+    for i in range(num_chunks):
+        chunks.append(df[i*chunk_size:(i+1)*chunk_size])
+    return chunks

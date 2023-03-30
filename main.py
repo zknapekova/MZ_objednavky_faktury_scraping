@@ -221,7 +221,7 @@ fnspza = PriameObjednavkyMail('fnspza')
 # ## download all attachements available from outlook
 search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + fnspza.hosp + '.sk' + "' ")
 
-# otl.save_attachment(hosp_path, search_result)
+#otl.save_attachment(fnspza.hosp_path, search_result)
 # load data
 fnspza.load()
 fnspza.clean_tables()
@@ -239,7 +239,10 @@ fnspza.create_columns_w_dict(key='fakultna nemocnica s poliklinikou zilina')
 # ## save df
 fnspza_df_search = pd.DataFrame(fnspza.df_all[fnspza.final_table_cols])
 fnspza.save_tables(table=fnspza_df_search)
-db.insert_table(table_name='priame_objednavky', df=fnspza.df_all, if_exists='append', index=False)
+
+df_split_list = split_dataframe(fnspza.df_all.drop(['rok_objednavky', 'rok_objednavky_num'], axis=1), chunk_size=100000)
+for i in df_split_list:
+    db.insert_table(table_name='priame_objednavky', df=i, if_exists='append', index=False)
 
 # ## FNNR - first load ###
 
@@ -692,4 +695,7 @@ db.insert_table(table_name='priame_objednavky', df=suscch.df_all, if_exists='app
 suscch.save_tables(table=suscch_search)
 
 #
+df = db.fetch_records('select * from objednavky.priame_objednavky')
+func.save_df(df=df[['objednavatel', 'cena', 'datum', 'dodavatel', 'popis', 'insert_date', 'file', 'link']], name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
+
 
