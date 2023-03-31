@@ -787,8 +787,53 @@ db.insert_table(table_name='priame_objednavky', df=nurch.df_all, if_exists='appe
 nurch.save_tables(table=nurch_search)
 
 
+# Nemocnica PP - first load ###
 
+nemocnicapp = PriameObjednavkyMail('nemocnicapp')
 
-func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nemocnicapp.hosp + '.sk' + "' ")
+otl.save_attachment(nemocnicapp.hosp_path, search_result)
 
+nemocnicapp.load()
+nemocnicapp.clean_tables()
+nemocnicapp.data_check()
+nemocnicapp.create_table(stand_column_names=stand_column_names)
+
+dict_pdf_files = {}
+cols = ['kategoria', 'objednavka_predmet', 'cena', 'datum', 'zdroj_financovania']
+for file_name in os.listdir(nemocnicapp.hosp_path):
+    if file_name.split(sep='.')[-1] == 'pdf':
+        list_of_pages = camelot.read_pdf(os.path.join(nemocnicapp.hosp_path, file_name), pages='1')
+        df_conc_pages = pd.DataFrame(columns=cols)
+        list_of_pages[0].df.drop(list_of_pages[0].df.index[0], inplace=True, axis=0)
+
+        for i in range(len(list_of_pages)):
+            list_of_pages[i].df.columns = cols
+            list_of_pages[i].df['file'] = file_name
+            list_of_pages[i].df['insert_date'] = datetime.now()
+            df_conc_pages = pd.concat([df_conc_pages, list_of_pages[i].df], ignore_index=True)
+
+        dict_pdf_files[file_name] = df_conc_pages
+
+# create df with all pdf files and clean it
+df_all_pdf = pd.concat([table for table in dict_pdf_files.values()], ignore_index=True)
+df_all_pdf = func.clean_str_cols(df_all_pdf)
+df_all_pdf.drop_duplicates(inplace=True)
+
+nemocnicapp.df_all = pd.concat([nemocnicapp.df_all, df_all_pdf], ignore_index=True)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0', '\.+':'.'}
+nemocnicapp.df_all = str_col_replace(nemocnicapp.df_all, 'cena', dict_cena)
+nemocnicapp.df_all['cena'] = nemocnicapp.df_all['cena'].astype(float)
+
+nemocnicapp.df_all['datum'] = nemocnicapp.df_all['datum'].str.replace('2055', '2022')
+nemocnicapp.df_all['datum'] = nemocnicapp.df_all['datum'].apply(get_dates)
+nemocnicapp.create_columns_w_dict(key='nemocnica poprad as')
+
+nemocnicapp_search = pd.DataFrame(nemocnicapp.df_all[nemocnicapp.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=nemocnicapp.df_all, if_exists='append', index=False)
+nemocnicapp.save_tables(table=nemocnicapp_search)
+
+df_orig = pd.concat([df_orig, nemocnicapp_search], ignore_index=True)
 

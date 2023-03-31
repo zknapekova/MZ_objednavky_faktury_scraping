@@ -7,7 +7,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
-from selenium.common.exceptions import ElementNotVisibleException, TimeoutException
+from selenium.common.exceptions import ElementNotVisibleException, TimeoutException, WebDriverException
 import re
 from config import *
 from datetime import datetime
@@ -206,10 +206,11 @@ def load_files(data_path):
     print('Loading start: ', datetime.now())
     all_tables = []
     for file_name in os.listdir(data_path):
-        if file_name.split(sep='.')[-1] in ('png', 'jpeg', 'pkl', 'docx', 'jpg', 'htm'):
+        if file_name.split(sep='.')[-1] in ('png', 'jpeg', 'pkl', 'jpg', 'htm'):
             continue
         elif file_name.split(sep='.')[-1] in ('pdf', 'docx'):
             logger.warning(f'PDF or DOCX file detected: {file_name}. Needs to be handled separately.')
+            print(f'PDF or DOCX file detected: {file_name}. Needs to be handled separately.')
             continue
         elif file_name.split(sep='.')[-1] == 'ods':
             df = pd.read_excel(os.path.join(data_path, file_name), engine='odf', sheet_name=None)

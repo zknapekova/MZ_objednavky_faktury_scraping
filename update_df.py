@@ -11,6 +11,12 @@ import sys
 import traceback
 from exceptions import DataNotAvailable
 import shutil
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.common.exceptions import ElementNotVisibleException, TimeoutException, WebDriverException
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename="log.txt", format='[%(asctime)s] %(levelname)s:  %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
@@ -29,6 +35,7 @@ except Exception as e:
 
 try:
     db = ObjednavkyDB(objednavky_db_connection)
+    logger.info(f"Connected to database")
 except Exception as e:
     logger.error(traceback.format_exc())
     sys.exit()
@@ -150,19 +157,86 @@ get_data('nurch',
          {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'},
          dict_key='narodny ustav reumatickych chorob piestany')
 
-# FNTN - web scraping is needed
+get_data('nemocnicapp',
+         {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0', '\.+':'.'},
+         dict_key='nemocnica poprad as')
 
-options = webdriver.ChromeOptions()
-options.add_argument("--start-maximized")
-driver = webdriver.Chrome(chromedriver_path2, options=options)
-driver.get(dict_all['fakultna nemocnica trencin']['objednavky_link'])
 
-table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                                                               "//div[contains(@id, 'content')]//table"))).get_attribute(
-    "outerHTML")
+# FNTN
+logger.info('fntn data load started')
+most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'fntn'].max()
+max_date_web = None
 
-result_df = pd.read_html(table_html)[0]
+try:
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(chromedriver_path2, options=options)
+    driver.get(dict_all['fakultna nemocnica trencin']['objednavky_link'])
 
+    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                                                                   "//div[contains(@id, 'content')]//table"))).get_attribute(
+        "outerHTML")
+    table_pd = pd.read_html(table_html)[0]
+    table_pd['datum'] = table_pd['Dátum vyhotovenia'].apply(get_dates)
+    max_date_web = table_pd['datum'].max()
+
+except Exception as e:
+    logger.error(traceback.format_exc())
+    driver.quit()
+    pass
+
+if max_date_web is not None and most_recent_date <= max_date_web:
+    while most_recent_date <= max_date_web:
+        try:
+            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                                                                       "//div[contains(@class, 'next')]//a[contains(text(), 'Nasled')]"))).click()
+            sleep(4)
+            next_table_lst = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, "//div[contains(@id, 'content')]//table"))).get_attribute(
+                "outerHTML")
+            next_table = pd.read_html(next_table_lst)[0]
+            next_table['datum'] = next_table['Dátum vyhotovenia'].apply(get_dates)
+            table_pd = pd.concat([table_pd, next_table], ignore_index=True)
+            max_date_web = next_table['datum'].max()
+            sleep(3)
+        except:
+            logger.error(traceback.format_exc())
+            driver.quit()
+            print('Retrieving data failed')
+            break
+    driver.quit()
+    logger.info('Data were retrieved')
+
+    table_pd.drop(table_pd[table_pd['datum'] < most_recent_date].index, inplace=True)
+
+    table_pd = func.clean_str_cols(table_pd)
+    table_pd = clean_str_col_names(table_pd)
+
+    table_pd['file'] = 'web'
+    table_pd['insert_date'] = datetime.now()
+    table_pd['dodavatel_ico'] = table_pd['ico dodavatela'].str.replace('\..*', '', regex=True)
+    table_pd['cena'] = table_pd['cena s dph (EUR)'].astype(float)
+    table_pd['cena_s_dph'] = 'ano'
+    table_pd['objednavka_predmet'] = table_pd['popis']
+    table_pd.rename(columns={'nazov dodavatela': 'dodavatel_nazov', 'cislo objednavky': 'objednavka_cislo'},
+                    inplace=True)
+
+    fntn = PriameObjednavkyMail('fntn')
+    fntn.df_all = table_pd
+    fntn.popis_list = ['popis', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
+    fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
+    fntn.df_all.drop(
+        columns=['schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela', 'datum vyhotovenia',
+                 'cislo zmluvy', 'cena s dph (EUR)', 'ico dodavatela'], inplace=True)
+
+    fntn_search = pd.DataFrame(fntn.df_all[fntn.final_table_cols])
+
+    df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
+    df_orig.drop_duplicates(inplace=True)
+
+    db.insert_table(table_name='priame_objednavky', df=df_orig[
+        (df_orig['objednavatel'] == 'fntn') & (df_orig['insert_date'].dt.date == datetime.now().date())],
+                    if_exists='append', index=False)
 
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
