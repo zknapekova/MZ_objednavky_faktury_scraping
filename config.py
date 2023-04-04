@@ -2,9 +2,7 @@ import os
 import functionss as func
 
 # Constants
-clean_table_regex = r'(vypracovala*\s*:.*)|(schvalil.*:.*)|(.*riaditel$)|(.*referent .*)|(vysvetlivky:)|(^v stlpci.*uviest.*)|(.*@.*\.sk.*)|(^informacia o.*)|(^kontakt:.*)|(dna: \d+.*)|(judr.*)|(ing.*)|(mgr.*)|(datum zaciatku platnosti)|(^vyhotovil.*)|(anna kasmanova)'
-
-
+clean_table_regex = r'(vypracovala*\s*:.*)|(schvalil.*:.*)|(.*riaditel$)|(.*referent .*)|(vysvetlivky:)|(^v stlpci.*uviest.*)|(.*@.*\.sk.*)|(^informacia o.*)|(^kontakt:.*)|(dna: \d+.*)|(judr.*)|(ing.*)|(mgr.*)|(datum zaciatku platnosti)|(^vyhotovil.*)|(anna kasmanova)|(^- za lekaren$)|(^- za referat prevadzky a udrzby$)'
 
 # Paths ###
 source_path = 'C:\\Users\\knapekoz\\OneDrive - health.gov.sk\\\Zverejnovanie zmluv linky_subjektyCO.xlsx'
@@ -30,7 +28,7 @@ chromedriver_path2 = 'C:\\Users\\knapekoz\\Documents\\Python Scripts\\chromedriv
 
 stand_column_names = {
     'objednavatel': ['nazov verejneho obstaravatela'],
-    'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)', 'sluzba',
+    'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)', 'sluzba', 'kategoria (tovary / prace / sluzby)',
                   'kategoria(tovary / prace / sluzby)', 'kategoria (tovar/stavebna praca/sluzba)', 'kategoria zakazky (tovar/stavebna praca/sluzba)'],
     'objednavka_predmet': ['nazov predmetu objednavky', 'predmet objednavky', 'nazov predmetu zakazky', 'predmet zakazky', 'nazou predmetu objednavky'],
     'cena': ['hodnotaobjednavkyv eur bez dph', 's.nc bdph', 'hodnotaobjednavkyv eur bez dph', 'hodnota zakazky      s dph', 'hodnota objednavky',

@@ -318,34 +318,25 @@ result_df = func.load_df(os.path.join(fntn.hosp_path + '21_03_2023_11_07_08fntn_
 result_df = func.clean_str_cols(result_df)
 result_df = clean_str_col_names(result_df)
 
-result_df['file'] = 'web'
-result_df['insert_date'] = datetime.now()
+result_df = result_df.assign(file='web', insert_date=datetime.now(), cena_s_dph='ano')
+result_df.rename(columns={'cislo objednavky': 'objednavka_cislo', 'nazov dodavatela': 'dodavatel_nazov',
+                          'popis':'objednavka_predmet'}, inplace=True)
 
-result_df['ico dodavatela'] = result_df['ico dodavatela'].str.replace('\..*', '', regex=True)
+result_df['dodavatel_ico'] = result_df['ico dodavatela'].str.replace('\..*', '', regex=True)
 result_df['cena'] = result_df['cena s dph (EUR)'].astype(float)
 result_df['datum'] = result_df['datum vyhotovenia'].apply(get_dates)
-result_df['cena_s_dph'] = 'ano'
-result_df['objednavka_predmet'] = result_df['popis']
 
 fntn.df_all = result_df
-fntn.dodavatel_list = ['nazov dodavatela', 'ico dodavatela']
-fntn.popis_list = ['popis', 'cislo objednavky', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
+fntn.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
 
 fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
-
+fntn.df_all.drop_duplicates(inplace=True)
 fntn_search = pd.DataFrame(fntn.df_all[fntn.final_table_cols])
 fntn.save_tables(table=fntn_search)
 
-df = fntn.df_all.drop(columns=['schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela', 'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'])
-df['objednavka_cislo'] = df['cislo objednavky']
-df['dodavatel_ico'] = df['ico dodavatela']
-df['dodavatel_nazov'] = df['nazov dodavatela']
-
-df.drop(columns=['cislo objednavky', 'ico dodavatela', 'nazov dodavatela'], inplace=True)
-
-db.insert_table(table_name='priame_objednavky', df=df, if_exists='append', index=False)
-
-
+fntn.df_all.drop(columns=['ico dodavatela', 'schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela',
+                          'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'], inplace=True)
+db.insert_table(table_name='priame_objednavky', df=fntn.df_all, if_exists='append', index=False)
 
 # FNSP Presov - first load ###
 
@@ -835,5 +826,94 @@ nemocnicapp_search = pd.DataFrame(nemocnicapp.df_all[nemocnicapp.final_table_col
 db.insert_table(table_name='priame_objednavky', df=nemocnicapp.df_all, if_exists='append', index=False)
 nemocnicapp.save_tables(table=nemocnicapp_search)
 
-df_orig = pd.concat([df_orig, nemocnicapp_search], ignore_index=True)
+# vusch - first load ###
+vusch = PriameObjednavkyMail('vusch')
+
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + vusch.hosp + '.sk' + "' ")
+otl.save_attachment(vusch.hosp_path, search_result)
+
+vusch.load()
+vusch.clean_tables()
+vusch.data_check()
+vusch.create_table(stand_column_names=stand_column_names)
+
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'}
+vusch.df_all = str_col_replace(vusch.df_all, 'cena', dict_cena)
+vusch.df_all['cena'] = np.where(vusch.df_all['cena'].str.match(r'\d*\.\d*\.\d*'),
+                              vusch.df_all['cena'].str.replace('\.', '', 1, regex=True), vusch.df_all['cena'])
+vusch.df_all['cena'] = vusch.df_all['cena'].astype(float)
+
+vusch.df_all['datum'] = vusch.df_all['datum'].apply(get_dates)
+vusch.create_columns_w_dict(key='vychodoslovensky ustav srdcovych a cievnych chorob as')
+vusch_search = pd.DataFrame(vusch.df_all[vusch.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=vusch.df_all, if_exists='append', index=False)
+vusch.save_tables(table=vusch_search)
+
+# DONSP - first load - no mails found ###
+
+donsp = PriameObjednavkyMail('donsp')
+donsp_webpages = {'objednavky_all': 'https://www.zverejnovaniedonsp.sk/?hlavna-sekcia=3'}
+
+
+def donsp_table_clean(df):
+    df.drop(index=[df.shape[0] - 1], inplace=True)
+    df.dropna(axis=1, how='all', inplace=True)
+    df.columns = df.iloc[0]
+    df.drop(df.index[0], inplace=True)
+    df.rename(
+        columns={'Číslo objednávky': 'objednavka_cislo', 'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico',
+                 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'},
+        inplace=True)
+
+    df = func.clean_str_cols(df)
+    dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
+                 '': '0',
+                 '\.+': '.'}
+    df = str_col_replace(df, 'cena', dict_cena)
+    df['cena'] = df['cena'].astype(float)
+    df['datum'] = df['datum'].apply(get_dates)
+    return df
+
+def donsp_data_download(webapge:str):
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(chromedriver_path2, options=options)
+    driver.get(webapge)
+
+    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+    result_df = pd.read_html(table_html)[0]
+    result_df = donsp_table_clean(result_df)
+
+    while True:
+        try:
+            sleep(4)
+            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]"))).click()
+
+            table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                        "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+            table_next = pd.read_html(table_html)[0]
+            table_next = donsp_table_clean(table_next)
+            result_df = pd.concat([result_df, table_next], ignore_index=True)
+            sleep(3)
+        except TimeoutException:
+            print('Data were retrieved')
+            break
+        except Exception:
+            print(traceback.format_exc())
+            break
+    driver.quit()
+
+    return result_df
+
+donsp.df_all = donsp_data_download(donsp_webpages['objednavky_all'])
+donsp.df_all = donsp.df_all.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin')
+
+donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
+db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Meno schvaľujúceho']), if_exists='append', index=False)
 

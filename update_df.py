@@ -15,7 +15,6 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
-from selenium.common.exceptions import ElementNotVisibleException, TimeoutException, WebDriverException
 
 
 logger = logging.getLogger(__name__)
@@ -79,12 +78,20 @@ def get_data(objednavatel:str, dict_cena:dict, dict_key:str, mail_domain_extensi
 
             obj.df_all['datum'] = obj.df_all['datum'].apply(get_dates)
 
+
         obj.create_columns_w_dict(key=dict_key)
         df_search = pd.DataFrame(obj.df_all[obj.final_table_cols])
         df_orig = pd.concat([df_orig, df_search], ignore_index=True)
 
         # save tables
-        db.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
+        try:
+            db.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
+            logger.info(f'{obj.hosp} data saved to database')
+        except Exception:
+            logger.error(traceback.format_exc())
+            logger.info(f'{obj.hosp} data insert to database failed')
+            pass
+
         move_all_files(source_path=obj.hosp_path, destination_path=obj.hosp_path_hist)
         logger.info(f'{obj.hosp} data load finished successfully')
 
@@ -161,6 +168,10 @@ get_data('nemocnicapp',
          {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0', '\.+':'.'},
          dict_key='nemocnica poprad as')
 
+get_data('vusch',
+         {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '', '': '0'},
+         dict_key='vychodoslovensky ustav srdcovych a cievnych chorob as')
+
 
 # FNTN
 logger.info('fntn data load started')
@@ -179,13 +190,12 @@ try:
     table_pd = pd.read_html(table_html)[0]
     table_pd['datum'] = table_pd['Dátum vyhotovenia'].apply(get_dates)
     max_date_web = table_pd['datum'].max()
-
 except Exception as e:
     logger.error(traceback.format_exc())
     driver.quit()
     pass
 
-if max_date_web is not None and most_recent_date <= max_date_web:
+if max_date_web is not None:
     while most_recent_date <= max_date_web:
         try:
             WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
@@ -199,49 +209,39 @@ if max_date_web is not None and most_recent_date <= max_date_web:
             table_pd = pd.concat([table_pd, next_table], ignore_index=True)
             max_date_web = next_table['datum'].max()
             sleep(3)
-        except:
+        except Exception as e:
             logger.error(traceback.format_exc())
             driver.quit()
-            print('Retrieving data failed')
+            print('Retrieving further data failed')
             break
     driver.quit()
-    logger.info('Data were retrieved')
+    logger.info('Data cleaning started')
 
     table_pd.drop(table_pd[table_pd['datum'] < most_recent_date].index, inplace=True)
 
-    table_pd = func.clean_str_cols(table_pd)
-    table_pd = clean_str_col_names(table_pd)
-
-    table_pd['file'] = 'web'
-    table_pd['insert_date'] = datetime.now()
-    table_pd['dodavatel_ico'] = table_pd['ico dodavatela'].str.replace('\..*', '', regex=True)
-    table_pd['cena'] = table_pd['cena s dph (EUR)'].astype(float)
-    table_pd['cena_s_dph'] = 'ano'
-    table_pd['objednavka_predmet'] = table_pd['popis']
-    table_pd.rename(columns={'nazov dodavatela': 'dodavatel_nazov', 'cislo objednavky': 'objednavka_cislo'},
-                    inplace=True)
-
     fntn = PriameObjednavkyMail('fntn')
-    fntn.df_all = table_pd
-    fntn.popis_list = ['popis', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
+    fntn.df_all = fntn_data_cleaning(table_pd)
+    fntn.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
     fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
     fntn.df_all.drop(
-        columns=['schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela', 'datum vyhotovenia',
-                 'cislo zmluvy', 'cena s dph (EUR)', 'ico dodavatela'], inplace=True)
+        columns=['ico dodavatela', 'schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela',
+                 'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'], inplace=True)
 
-    fntn_search = pd.DataFrame(fntn.df_all[fntn.final_table_cols])
+    # remove duplicates
+    df_new = fntn.df_all[fntn.df_all['datum'] == most_recent_date]
+    df_db = db.fetch_records(
+        "select * from objednavky.priame_objednavky where objednavatel='fntn' and datum = '{}'; ".format(
+            most_recent_date.date().strftime('%Y-%m-%d')))
+    df_concat = (pd.concat([df_new,
+                    df_db [df_new.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
 
+    fntn_search = pd.DataFrame(df_concat[fntn.final_table_cols])
     df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
-    df_orig.drop_duplicates(inplace=True)
-
-    db.insert_table(table_name='priame_objednavky', df=df_orig[
-        (df_orig['objednavatel'] == 'fntn') & (df_orig['insert_date'].dt.date == datetime.now().date())],
+    db.insert_table(table_name='priame_objednavky', df=df_concat.drop(columns=['source']),
                     if_exists='append', index=False)
 
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
-
-
 
 
 

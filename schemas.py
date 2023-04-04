@@ -4,11 +4,13 @@ import pandas as pd
 from config import *
 from functions_ZK import *
 import mysql.connector as pyo
-from mysql_config import objednavky_db_connection
+from mysql_config import objednavky_db_connection, objednavky_db_connection_cloud
 import copy
 from sqlalchemy import create_engine
 import math
-
+import traceback
+import logging
+logger = logging.getLogger(__name__)
 
 class PriameObjednavkyMail:
     def __init__(self, hosp):
@@ -48,7 +50,7 @@ class PriameObjednavkyMail:
                     doc[key] = doc[key].dropna(thresh=int(len(doc[key].columns) / 3)).reset_index(drop=True)
                     doc[key] = doc[key].dropna(axis=1, thresh=math.ceil(doc[key].shape[0]*0.1))
                     if not doc[key].empty:
-                        if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))): # remove Informacie o vystavení objednávok
+                        if ('vystaveni objednavok' in '|'.join(map(str, doc[key].iloc[0]))): # remove 'Informacie o vystavení objednávok'
                             doc[key] = doc[key].drop(doc[key].index[0])
                         doc[key].columns = doc[key].iloc[0]
                         doc[key] = doc[key].drop(doc[key].index[0])
@@ -93,6 +95,7 @@ class PriameObjednavkyMail:
         func.save_df(df=table, name=os.path.join(path + self.hosp + '.pkl'))
 
 
+
 class ObjednavkyDB:
     def __init__(self, db_connection):
         self.db_connection = db_connection
@@ -119,7 +122,7 @@ class ObjednavkyDB:
             self.cursor.execute(query, values)
             self.con.commit()
         except Exception as e:
-            print(e)
+            logger.error(traceback.format_exc())
 
     def insert_table(self, table_name: str, df: pd.DataFrame, if_exists: str = 'append', index: bool = False, **kwargs):
         '''
@@ -133,15 +136,14 @@ class ObjednavkyDB:
         try:
             df.to_sql(name=table_name, con=self.engine, if_exists='append', index=False, **kwargs)
         except Exception as e:
-            print(e)
+            logger.error(traceback.format_exc())
 
     def update(self, query: str, values: list):
         try:
             self.cursor.execute(query, values)
             self.con.commit()
         except Exception as e:
-            print(e)
-
+            logger.error(traceback.format_exc())
 
 class OutlookTools:
     def __init__(self, object):

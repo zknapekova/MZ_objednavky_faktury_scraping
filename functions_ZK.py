@@ -345,10 +345,23 @@ def fnspza_data_cleaning(input_table):
     print('date was converted to timestamp successfully')
 
     fnspza_all3 = fnspza_all2.drop_duplicates()
+    fnspza_all3 = fnspza_all3.drop(['rok_objednavky', 'rok_objednavky_num'], axis=1)
 
     return fnspza_all3
 
 
+def fntn_data_cleaning(df):
+    df = func.clean_str_cols(df)
+    df = clean_str_col_names(df)
+
+    df = df.assign(file='web', insert_date=datetime.now(), cena_s_dph='ano')
+    df.rename(columns={'cislo objednavky': 'objednavka_cislo', 'nazov dodavatela': 'dodavatel_nazov',
+                       'popis': 'objednavka_predmet'}, inplace=True)
+
+    df['dodavatel_ico'] = df['ico dodavatela'].str.replace('\..*', '', regex=True)
+    df['cena'] = df['cena s dph (EUR)'].astype(float)
+    df.drop_duplicates(inplace=True)
+    return df
 
 def move_all_files(source_path, destination_path):
     for file_name in os.listdir(source_path):
@@ -370,3 +383,6 @@ def split_dataframe(df, chunk_size = 10000):
     for i in range(num_chunks):
         chunks.append(df[i*chunk_size:(i+1)*chunk_size])
     return chunks
+
+
+
