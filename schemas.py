@@ -6,7 +6,8 @@ from functions_ZK import *
 import mysql.connector as pyo
 from mysql_config import objednavky_db_connection, objednavky_db_connection_cloud
 import copy
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+import pymysql
 import math
 import traceback
 import logging
@@ -95,22 +96,25 @@ class PriameObjednavkyMail:
         func.save_df(df=table, name=os.path.join(path + self.hosp + '.pkl'))
 
 
-
 class ObjednavkyDB:
     def __init__(self, db_connection):
         self.db_connection = db_connection
-        self.con = pyo.connect(**db_connection)
-        self.cursor = self.con.cursor()
-        self.cursor.execute('set global max_allowed_packet=67108864')
-
-        self.engine = create_engine(
-            f"mysql+mysqlconnector://{db_connection['user']}:{db_connection['password']}@{db_connection['host']}:{db_connection['port']}/{db_connection['database']}",
-            echo=False)
+        if self.db_connection['host'] == '127.0.0.1':
+            self.con = pyo.connect(**db_connection)
+            self.cursor = self.con.cursor()
+            self.engine = create_engine(
+                f"mysql+mysqlconnector://{db_connection['user']}:{db_connection['password']}@{db_connection['host']}:{db_connection['port']}/{db_connection['database']}",
+                echo=False)
+        elif self.db_connection['host'] == 'aws.connect.psdb.cloud':
+            self.engine = create_engine(
+                f"mysql+pymysql://{objednavky_db_connection_cloud['user']}:{objednavky_db_connection_cloud['password']}@{objednavky_db_connection_cloud['host']}/{objednavky_db_connection_cloud['database']}?charset=utf8mb4",
+                connect_args={'ssl': {'ssl_ca': '/etc/ssl/cert.pem'}})
+            self.con = self.engine.connect()
 
     def __del__(self):
         self.con.close()
 
-    def fetch_records(self, query: str):
+    def fetch_records(self, query: str): # limit 100000 rows for cloud
         # self.cursor.execute(query)
         # rows = self.cursor.fetchall()
         return pd.read_sql(query, con=self.con)
@@ -134,7 +138,7 @@ class ObjednavkyDB:
         dict_cols = df.columns[df.applymap(lambda x: isinstance(x, dict)).any()]
         df = df.apply(lambda x: x.astype(str) if x.name in dict_cols else x)
         try:
-            df.to_sql(name=table_name, con=self.engine, if_exists='append', index=False, **kwargs)
+            df.to_sql(name=table_name, con=self.engine, if_exists='append', index=False, **kwargs) # works for localhost as well as cloud
         except Exception as e:
             logger.error(traceback.format_exc())
 

@@ -24,6 +24,7 @@ otl = OutlookTools(outlook)
 path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
 
 db = ObjednavkyDB(objednavky_db_connection)
+db_cloud = ObjednavkyDB(objednavky_db_connection_cloud)
 
 #############################################################################################################
 # Web scraping
@@ -853,18 +854,15 @@ vusch.save_tables(table=vusch_search)
 # DONSP - first load - no mails found ###
 
 donsp = PriameObjednavkyMail('donsp')
-donsp_webpages = {'objednavky_all': 'https://www.zverejnovaniedonsp.sk/?hlavna-sekcia=3'}
 
+def donsp_table_clean(df, df_rename_dict, set_column_names=False):
+    if set_column_names:
+        df.drop(index=[df.shape[0] - 1], inplace=True)
+        df.dropna(axis=1, how='all', inplace=True)
+        df.columns = df.iloc[0]
+        df.drop(df.index[0], inplace=True)
 
-def donsp_table_clean(df):
-    df.drop(index=[df.shape[0] - 1], inplace=True)
-    df.dropna(axis=1, how='all', inplace=True)
-    df.columns = df.iloc[0]
-    df.drop(df.index[0], inplace=True)
-    df.rename(
-        columns={'Číslo objednávky': 'objednavka_cislo', 'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico',
-                 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'},
-        inplace=True)
+    df.rename(columns=df_rename_dict, inplace=True)
 
     df = func.clean_str_cols(df)
     dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
@@ -872,10 +870,12 @@ def donsp_table_clean(df):
                  '\.+': '.'}
     df = str_col_replace(df, 'cena', dict_cena)
     df['cena'] = df['cena'].astype(float)
+    df['datum'] = df['datum'].str.replace('29.2.', '27.2.').str.replace('31.04.', '30.04.').str.replace('31.06.', '30.06.')
     df['datum'] = df['datum'].apply(get_dates)
     return df
 
 def donsp_data_download(webapge:str):
+
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
     driver = webdriver.Chrome(chromedriver_path2, options=options)
@@ -884,7 +884,8 @@ def donsp_data_download(webapge:str):
     table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
                                 "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
     result_df = pd.read_html(table_html)[0]
-    result_df = donsp_table_clean(result_df)
+    result_df = donsp_table_clean(result_df, set_column_names=True, df_rename_dict={'Číslo': 'objednavka_cislo',
+                    'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma celkom': 'cena', 'Popis tovaru': 'objednavka_predmet', 'DÁTUM': 'datum'})
 
     while True:
         try:
@@ -908,7 +909,8 @@ def donsp_data_download(webapge:str):
 
     return result_df
 
-donsp.df_all = donsp_data_download(donsp_webpages['objednavky_all'])
+# 2021-2023
+donsp.df_all = donsp_data_download(donsp_webpages['objednavky_2021_2023'])
 donsp.df_all = donsp.df_all.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
 
 donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
@@ -916,4 +918,125 @@ donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l na
 
 donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
 db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Meno schvaľujúceho']), if_exists='append', index=False)
+
+# 2020
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(donsp_webpages['objednavky_2020'])
+
+n_records_dropdown = driver.find_element(By.XPATH, "//div[contains(@id, 'tablepress-43_length')]//select[contains(@name, 'tablepress-43_length')]")
+select = Select(n_records_dropdown)
+select.select_by_value('-1')
+
+table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//table[contains(@id, 'tablepress-43')]"))).get_attribute("outerHTML")
+driver.quit()
+result_df = pd.read_html(table_html)[0]
+result_df.rename(
+    columns={'Číslo': 'objednavka_cislo', 'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico',
+             'Suma celkom': 'cena', 'Popis tovaru': 'objednavka_predmet', 'DÁTUM': 'datum'},
+    inplace=True)
+
+result_df = func.clean_str_cols(result_df)
+dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
+             '': '0', '\.+': '.'}
+result_df = str_col_replace(result_df, 'cena', dict_cena)
+result_df['cena'] = result_df['cena'].astype(float)
+result_df['datum'] = result_df['datum'].str.replace('069', '09').str.replace('101', '10')
+result_df['datum'] = result_df['datum'].apply(get_dates)
+
+
+donsp = PriameObjednavkyMail('donsp')
+donsp.df_all = result_df.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.dodavatel_list = ['dodavatel_nazov']
+
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2020')
+donsp.df_all.drop_duplicates(inplace=True)
+
+donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+
+
+# 2019
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(donsp_webpages['objednavky_2019'])
+
+table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//table[contains(@id, 'tablepress-37')]"))).get_attribute("outerHTML")
+driver.quit()
+result_df = pd.read_html(table_html)[0]
+
+donsp = PriameObjednavkyMail('donsp')
+donsp.df_all = donsp_table_clean(result_df, {'Číslo': 'objednavka_cislo', 'Dodávateľ': 'dodavatel_nazov',
+             'Suma celkom': 'cena', 'Popis tovaru': 'objednavka_predmet', 'DÁTUM': 'datum'})
+
+donsp.df_all = donsp.df_all.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.dodavatel_list = ['dodavatel_nazov']
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2019')
+donsp.df_all.drop_duplicates(inplace=True)
+
+donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+
+# 2018
+
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(donsp_webpages['objednavky_2018'])
+
+table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//table[contains(@id, 'tablepress-34')]"))).get_attribute("outerHTML")
+driver.quit()
+result_df = pd.read_html(table_html)[0]
+
+donsp = PriameObjednavkyMail('donsp')
+
+donsp.df_all = donsp_table_clean(result_df, {'Číslo': 'objednavka_cislo', 'Dodávateľ': 'dodavatel_nazov',
+             'Suma celkom': 'cena', 'Popis tovaru': 'objednavka_predmet', 'DÁTUM': 'datum'})
+
+donsp.df_all = donsp.df_all.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.dodavatel_list = ['dodavatel_nazov']
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2018')
+donsp.df_all.drop_duplicates(inplace=True)
+
+donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
+
+
+db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['Číslo zmluvy', 'Schválil']))
+
+# 2017
+
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+driver.get(donsp_webpages['objednavky_2017'])
+
+table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//table[contains(@id, 'tablepress-25')]"))).get_attribute("outerHTML")
+driver.quit()
+result_df = pd.read_html(table_html)[0]
+result_df.columns=['objednavka_cislo', 'objednavka_predmet', 'cena', 'cislo_zmluvy', 'datum', 'dodavatel_nazov', 'schvalil']
+
+donsp = PriameObjednavkyMail('donsp')
+
+donsp.df_all = donsp_table_clean(result_df, {})
+
+donsp.df_all = donsp.df_all.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.dodavatel_list = ['dodavatel_nazov']
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2017')
+donsp.df_all.drop_duplicates(inplace=True)
+
+donsp_search = pd.DataFrame(donsp.df_all[donsp.final_table_cols])
+
+db.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['cislo_zmluvy', 'schvalil']))
+db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(columns=['cislo_zmluvy', 'schvalil']))
+
+
 

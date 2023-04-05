@@ -5,7 +5,7 @@ from schemas import OutlookTools, PriameObjednavkyMail, ObjednavkyDB
 import win32com.client
 import functionss as func
 import shutil
-from mysql_config import objednavky_db_connection
+from mysql_config import objednavky_db_connection, objednavky_db_connection_cloud
 import logging
 import sys
 import traceback
@@ -34,6 +34,7 @@ except Exception as e:
 
 try:
     db = ObjednavkyDB(objednavky_db_connection)
+    db_cloud = ObjednavkyDB(objednavky_db_connection_cloud)
     logger.info(f"Connected to database")
 except Exception as e:
     logger.error(traceback.format_exc())
@@ -86,6 +87,7 @@ def get_data(objednavatel:str, dict_cena:dict, dict_key:str, mail_domain_extensi
         # save tables
         try:
             db.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
+            db_cloud.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
             logger.info(f'{obj.hosp} data saved to database')
         except Exception:
             logger.error(traceback.format_exc())
@@ -228,17 +230,81 @@ if max_date_web is not None:
                  'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'], inplace=True)
 
     # remove duplicates
-    df_new = fntn.df_all[fntn.df_all['datum'] == most_recent_date]
+
     df_db = db.fetch_records(
         "select * from objednavky.priame_objednavky where objednavatel='fntn' and datum = '{}'; ".format(
             most_recent_date.date().strftime('%Y-%m-%d')))
-    df_concat = (pd.concat([df_new,
-                    df_db [df_new.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
+    df_concat = (pd.concat([fntn.df_all,
+                    df_db[fntn.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
 
     fntn_search = pd.DataFrame(df_concat[fntn.final_table_cols])
     df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
-    db.insert_table(table_name='priame_objednavky', df=df_concat.drop(columns=['source']),
-                    if_exists='append', index=False)
+    db.insert_table(table_name='priame_objednavky', df=df_concat)
+    db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+
+
+# DONSP
+
+logger.info('donsp data load started')
+most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'donsp'].max()
+max_date_web = None
+
+def donsp_table_clean(df, df_rename_dict, set_column_names=False):
+    if set_column_names:
+        df.drop(index=[df.shape[0] - 1], inplace=True)
+        df.dropna(axis=1, how='all', inplace=True)
+        df.columns = df.iloc[0]
+        df.drop(df.index[0], inplace=True)
+
+    df.rename(columns=df_rename_dict, inplace=True)
+
+    df = func.clean_str_cols(df)
+    dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
+                 '': '0',
+                 '\.+': '.'}
+    df = str_col_replace(df, 'cena', dict_cena)
+    df['cena'] = df['cena'].astype(float)
+    df['datum'] = df['datum'].str.replace('29.2.', '27.2.').str.replace('31.04.', '30.04.').str.replace('31.06.', '30.06.')
+    df['datum'] = df['datum'].apply(get_dates)
+    return df
+
+def donsp_data_download(webapge:str):
+
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(chromedriver_path2, options=options)
+    driver.get(donsp_webpages['objednavky_2021_2023'])
+
+    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+    result_df = pd.read_html(table_html)[0]
+    result_df = donsp_table_clean(result_df, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
+                    'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
+
+    max_date_web = result_df['datum'].max()
+
+    while most_recent_date<=max_date_web:
+        try:
+            sleep(4)
+            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]"))).click()
+
+            table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                        "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+            table_next = pd.read_html(table_html)[0]
+            table_next = donsp_table_clean(table_next)
+            result_df = pd.concat([result_df, table_next], ignore_index=True)
+            sleep(3)
+        except TimeoutException:
+            print('Data were retrieved')
+            break
+        except Exception:
+            print(traceback.format_exc())
+            break
+    driver.quit()
+
+    return result_df
+
 
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))

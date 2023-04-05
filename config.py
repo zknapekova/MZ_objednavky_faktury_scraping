@@ -47,6 +47,12 @@ stand_column_names = {
 }
 
 
+donsp_webpages = {'objednavky_2021_2023': 'https://www.zverejnovaniedonsp.sk/?hlavna-sekcia=3',
+                  'objednavky_2020': 'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2020/',
+                  'objednavky_2019': 'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-2019/',
+                  'objednavky_2018': 'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2018/',
+                  'objednavky_2017': 'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2017/'}
+
 # load excel and create dictionary
 df = func.load_df(source_path)
 df['nazov'] = df['Nazov_full']
@@ -87,6 +93,9 @@ dict_all['fakultna nemocnica s poliklinikou f d roosevelta banska bystrica'][
         'objednavky_faktury_link'] = 'https://www.fnspfdr.sk/objednavky/zverejnenie.php?akcia=vsetkyobjednavky_internet'
 dict_all['fakultna nemocnica s poliklinikou zilina']['objednavky_link'] = 'http://www.fnspza.sk/zm2019/objednavky'
 dict_all['fakultna nemocnica trencin']['objednavky_link'] = 'https://www.fntn.sk/zverejnovanie/objednavky/zobraz/triedenie/order_date/smer/zostupne'
-
+dict_all['dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2020']={'zverejnovanie_objednavok_faktur_rozne':'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2020/'}
+dict_all['dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2019']={'zverejnovanie_objednavok_faktur_rozne':'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-2019/'}
+dict_all['dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2018']={'zverejnovanie_objednavok_faktur_rozne':'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2018/'}
+dict_all['dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin_2017']={'zverejnovanie_objednavok_faktur_rozne':'https://www.donsp.sk/donsp/inzercia/objednavky/objednavky-rok-2017/'}
 
 
