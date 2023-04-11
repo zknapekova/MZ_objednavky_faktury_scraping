@@ -218,92 +218,63 @@ if max_date_web is not None:
             break
     driver.quit()
     logger.info('Data cleaning started')
+    try:
+        table_pd.drop(table_pd[table_pd['datum'] < most_recent_date].index, inplace=True)
 
-    table_pd.drop(table_pd[table_pd['datum'] < most_recent_date].index, inplace=True)
+        fntn = PriameObjednavkyMail('fntn')
+        fntn.df_all = fntn_data_cleaning(table_pd)
+        fntn.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
+        fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
+        fntn.df_all.drop(
+            columns=['ico dodavatela', 'schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela',
+                     'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'], inplace=True)
 
-    fntn = PriameObjednavkyMail('fntn')
-    fntn.df_all = fntn_data_cleaning(table_pd)
-    fntn.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
-    fntn.create_columns_w_dict(key='fakultna nemocnica trencin')
-    fntn.df_all.drop(
-        columns=['ico dodavatela', 'schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela',
-                 'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)'], inplace=True)
+        # remove duplicates
 
-    # remove duplicates
+        df_db = db.fetch_records(
+            "select * from objednavky.priame_objednavky where objednavatel='fntn' and datum = '{}'; ".format(
+                most_recent_date.date().strftime('%Y-%m-%d')))
+        df_concat = (pd.concat([fntn.df_all,
+                        df_db[fntn.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
 
-    df_db = db.fetch_records(
-        "select * from objednavky.priame_objednavky where objednavatel='fntn' and datum = '{}'; ".format(
-            most_recent_date.date().strftime('%Y-%m-%d')))
-    df_concat = (pd.concat([fntn.df_all,
-                    df_db[fntn.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
-
-    fntn_search = pd.DataFrame(df_concat[fntn.final_table_cols])
-    df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
-    db.insert_table(table_name='priame_objednavky', df=df_concat)
-    db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
-
+        logger.info('{} rows retrieved'.format(df_concat.shape[0]))
+        fntn_search = pd.DataFrame(df_concat[fntn.final_table_cols])
+        df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
+        db.insert_table(table_name='priame_objednavky', df=df_concat)
+        db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        logger.error('Data insert failed for fntn')
+        pass
 
 # DONSP
 
 logger.info('donsp data load started')
 most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'donsp'].max()
 max_date_web = None
+#df_orig.loc[df_orig['datum'].dt.date == pd.Timestamp(year=2023, month=4, day=21).date(), 'datum'] = pd.Timestamp(year=2023, month=3, day=21)
 
-def donsp_table_clean(df, df_rename_dict, set_column_names=False):
-    if set_column_names:
-        df.drop(index=[df.shape[0] - 1], inplace=True)
-        df.dropna(axis=1, how='all', inplace=True)
-        df.columns = df.iloc[0]
-        df.drop(df.index[0], inplace=True)
 
-    df.rename(columns=df_rename_dict, inplace=True)
+donsp = PriameObjednavkyMail('donsp')
+donsp.df_all = donsp_data_download(donsp_webpages['objednavky_2021_2023'])
 
-    df = func.clean_str_cols(df)
-    dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
-                 '': '0',
-                 '\.+': '.'}
-    df = str_col_replace(df, 'cena', dict_cena)
-    df['cena'] = df['cena'].astype(float)
-    df['datum'] = df['datum'].str.replace('29.2.', '27.2.').str.replace('31.04.', '30.04.').str.replace('31.06.', '30.06.')
-    df['datum'] = df['datum'].apply(get_dates)
-    return df
+donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
+donsp.dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
+donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin')
 
-def donsp_data_download(webapge:str):
+# remove duplicates
+df_db_donsp = db.fetch_records(
+    "select * from objednavky.priame_objednavky where objednavatel='donsp' and datum = '{}'; ".format(
+        most_recent_date.date().strftime('%Y-%m-%d')))
+df_concat = (pd.concat([donsp.df_all,
+                        df_db_donsp[donsp.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'],
+                                                                     keep=False))
 
-    options = webdriver.ChromeOptions()
-    options.add_argument("--start-maximized")
-    driver = webdriver.Chrome(chromedriver_path2, options=options)
-    driver.get(donsp_webpages['objednavky_2021_2023'])
+donsp_search = pd.DataFrame(df_concat[donsp.final_table_cols])
+df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
 
-    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
-    result_df = pd.read_html(table_html)[0]
-    result_df = donsp_table_clean(result_df, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
-                    'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
-
-    max_date_web = result_df['datum'].max()
-
-    while most_recent_date<=max_date_web:
-        try:
-            sleep(4)
-            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
-                "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]"))).click()
-
-            table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                        "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
-            table_next = pd.read_html(table_html)[0]
-            table_next = donsp_table_clean(table_next)
-            result_df = pd.concat([result_df, table_next], ignore_index=True)
-            sleep(3)
-        except TimeoutException:
-            print('Data were retrieved')
-            break
-        except Exception:
-            print(traceback.format_exc())
-            break
-    driver.quit()
-
-    return result_df
+db.insert_table(table_name='priame_objednavky', df=df_concat)
+db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
 
 
 

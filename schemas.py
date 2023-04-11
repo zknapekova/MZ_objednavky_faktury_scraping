@@ -107,7 +107,7 @@ class ObjednavkyDB:
                 echo=False)
         elif self.db_connection['host'] == 'aws.connect.psdb.cloud':
             self.engine = create_engine(
-                f"mysql+pymysql://{objednavky_db_connection_cloud['user']}:{objednavky_db_connection_cloud['password']}@{objednavky_db_connection_cloud['host']}/{objednavky_db_connection_cloud['database']}?charset=utf8mb4",
+                f"mysql+pymysql://{db_connection['user']}:{db_connection['password']}@{db_connection['host']}/{db_connection['database']}?charset=utf8mb4",
                 connect_args={'ssl': {'ssl_ca': '/etc/ssl/cert.pem'}})
             self.con = self.engine.connect()
 

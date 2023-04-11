@@ -18,6 +18,7 @@ import os
 import shutil
 from win32com import client as wc
 import logging
+import traceback
 logger = logging.getLogger(__name__)
 
 
@@ -385,4 +386,66 @@ def split_dataframe(df, chunk_size = 10000):
     return chunks
 
 
+def donsp_table_clean(df, df_rename_dict, set_column_names=False):
+    if set_column_names:
+        df.drop(index=[df.shape[0] - 1], inplace=True)
+        df.dropna(axis=1, how='all', inplace=True)
+        df.columns = df.iloc[0]
+        df.drop(df.index[0], inplace=True)
+
+    df.rename(columns=df_rename_dict, inplace=True)
+
+    df = func.clean_str_cols(df)
+    dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
+                 '': '0',
+                 '\.+': '.'}
+    df = str_col_replace(df, 'cena', dict_cena)
+    df['cena'] = df['cena'].astype(float)
+    df['datum'] = df['datum'].str.replace('29\.2\.', '27.2.', regex=True).str.replace('31\.04\.', '30.04.', regex=True).\
+        str.replace('31\.06\.', '30.06.', regex=True)
+    df['datum'] = df['datum'].apply(get_dates)
+    return df
+
+def donsp_data_download(webpage:str, most_recent_date, options, ):
+    try:
+        driver = webdriver.Chrome(chromedriver_path2, options=options)
+        driver.get(webpage)
+
+        table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                    "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+        result_df = pd.read_html(table_html)[0]
+        result_df = donsp_table_clean(result_df, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
+                        'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
+
+        max_date_web = result_df['datum'].max()
+
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        driver.quit()
+        pass
+
+    if max_date_web is not None:
+        while most_recent_date<=max_date_web:
+            try:
+                sleep(4)
+                WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
+                    "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]"))).click()
+
+                table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
+                                            "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
+                table_next = pd.read_html(table_html)[0]
+                table_next = donsp_table_clean(table_next, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
+                            'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
+                result_df = pd.concat([result_df, table_next], ignore_index=True)
+                max_date_web = table_next['datum'].max()
+                sleep(3)
+
+            except Exception:
+                print(traceback.format_exc())
+                break
+    driver.quit()
+    result_df.drop(result_df[result_df['datum'] < most_recent_date].index, inplace=True)
+    result_df.drop(columns=['Meno schvaľujúceho'], inplace=True)
+    result_df = result_df.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
+    return result_df
 

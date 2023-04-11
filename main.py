@@ -1040,3 +1040,8 @@ db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(colum
 
 
 
+# NSP Trstena - no mails found
+nsptrstena = PriameObjednavkyMail('nsptrstena')
+
+search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nsptrstena.hosp + '.sk' + "' ")
+otl.save_attachment(nsptrstena.hosp_path, search_result)
