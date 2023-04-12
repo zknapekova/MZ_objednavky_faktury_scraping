@@ -1040,8 +1040,64 @@ db_cloud.insert_table(table_name='priame_objednavky', df=donsp.df_all.drop(colum
 
 
 
-# NSP Trstena - no mails found
+# NSP Trstena - no mails found, pdf files available at https://www.nsptrstena.sk/sk/objednavky
+
+# 2017-2022
 nsptrstena = PriameObjednavkyMail('nsptrstena')
 
-search_result = otl.find_message(path, "@SQL=""urn:schemas:httpmail:fromemail"" LIKE '%" + nsptrstena.hosp + '.sk' + "' ")
-otl.save_attachment(nsptrstena.hosp_path, search_result)
+df_all = pd.DataFrame()
+
+for file_name in os.listdir(nsptrstena.hosp_path):
+    list_of_dfs = camelot.read_pdf(os.path.join(nsptrstena.hosp_path, file_name), pages='all', flavor='stream',
+                                   row_tol=20)
+    for i in range(len(list_of_dfs)):
+        df = list_of_dfs[i].df
+        mask = df.applymap(lambda x: bool(re.search('(Str:.*)|(Vystavené objednávky za obdobie:)', str(x)))).any(axis=1)
+        df.drop(df[mask].index, inplace=True)
+        df.reset_index(inplace=True, drop=True)
+        df.columns = df.iloc[0]
+        df.drop([0], inplace=True)
+        if '' in df.columns.values: df.drop(columns=[''], inplace=True)
+        df['file'] = file_name
+        df_all = pd.concat([df_all, df], ignore_index=True)
+
+df_all = func.clean_str_cols(df_all)
+df_all = clean_str_col_names(df_all)
+df_all['datum'] = df_all['datumobjednania'].apply(get_dates)
+
+df_all.loc[pd.isna(df_all['predbezna'])==False, 'predbeznacena bez dph'] = df_all['predbezna']
+
+df_all['predbeznapredmet objednaniacena bez dph'] = df_all['predbeznapredmet objednaniacena bez dph'].str.replace('\seur\s', ' ', regex=True)
+
+df_all['cena_extr'] = df_all['predbeznapredmet objednaniacena bez dph'].str.extract(r'(\d{1,}\.\d*)')
+df_all['predbeznapredmet objednaniacena bez dph'] = df_all['predbeznapredmet objednaniacena bez dph'].str.replace('\d{1,}\.\d*', ' ', regex=True)
+
+df_all.loc[(pd.isna(df_all['predbeznapredmet objednaniacena bez dph']) == False) & (pd.isna(df_all['predbeznacena bez dph']) == True),
+                'predbeznacena bez dph'] = df_all['cena_extr']
+
+df_all.loc[(pd.isna(df_all['predbeznapredmet objednaniacena bez dph']) == False) & (pd.isna(df_all['predmet objednania']) == True),
+                'predmet objednania'] = df_all['predbeznapredmet objednaniacena bez dph']
+
+df_all.loc[df_all['predbeznacena bez dph'] == '', 'predbeznacena bez dph'] = '0'
+df_all['predbeznacena bez dph'] = df_all['predbeznacena bez dph'].str.replace('[(a-z)|\s]', '', regex=True)
+df_all['cena']=df_all['predbeznacena bez dph'].astype(float)
+
+nsptrstena.df_all = df_all.assign(cena_s_dph='nie', insert_date=datetime.now())
+nsptrstena.df_all.rename(columns = {'predmet objednania':'objednavka_predmet', 'objednavka':'objednavka_cislo'}, inplace=True)
+
+nsptrstena.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'zmluva', 'cena_s_dph']
+nsptrstena.dodavatel_list = ['dodavatel']
+nsptrstena.create_columns_w_dict(key='hornooravska nemocnica s poliklinikou trstena')
+nsptrstena.df_all.drop_duplicates(inplace=True)
+
+nsptrstena_search = pd.DataFrame(nsptrstena.df_all[nsptrstena.final_table_cols])
+db.insert_table(table_name='priame_objednavky', df=nsptrstena.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil', 'predbezna', 'cena bez dph', 'predbeznapredmet objednaniacena bez dph', 'cena_extr']))
+
+# 2023
+nsptrstena = PriameObjednavkyMail('nsptrstena')
+
+urlretrieve("https://www.nsptrstena.sk/uploads/fck/document/Objednavky/ROK%202023/Zoznam%20objednavok%202023(1).pdf",
+            nsptrstena.hosp_path + current_date_time.strftime("%d-%m-%Y") + str(keysList[63]).replace(" ", "_") + '.pdf')
+
+
+

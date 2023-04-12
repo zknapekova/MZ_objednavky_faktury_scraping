@@ -34,8 +34,9 @@ except Exception as e:
 
 try:
     db = ObjednavkyDB(objednavky_db_connection)
+    logger.info(f"Connected to local database")
     db_cloud = ObjednavkyDB(objednavky_db_connection_cloud)
-    logger.info(f"Connected to database")
+    logger.info(f"Connected to cloud database")
 except Exception as e:
     logger.error(traceback.format_exc())
     sys.exit()
@@ -86,8 +87,8 @@ def get_data(objednavatel:str, dict_cena:dict, dict_key:str, mail_domain_extensi
 
         # save tables
         try:
-            db.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
-            db_cloud.insert_table(table_name='priame_objednavky', df=obj.df_all, if_exists='append', index=False)
+            db.insert_table(table_name='priame_objednavky', df=obj.df_all)
+            db_cloud.insert_table(table_name='priame_objednavky', df=obj.df_all)
             logger.info(f'{obj.hosp} data saved to database')
         except Exception:
             logger.error(traceback.format_exc())
@@ -242,6 +243,7 @@ if max_date_web is not None:
         df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
         db.insert_table(table_name='priame_objednavky', df=df_concat)
         db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+        logger.info('Data saved to database')
     except Exception as e:
         logger.error(traceback.format_exc())
         logger.error('Data insert failed for fntn')
@@ -256,7 +258,7 @@ max_date_web = None
 
 
 donsp = PriameObjednavkyMail('donsp')
-donsp.df_all = donsp_data_download(donsp_webpages['objednavky_2021_2023'])
+donsp.df_all = donsp_data_download(webpage=donsp_webpages['objednavky_2021_2023'], most_recent_date=most_recent_date, options=options)
 
 donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
 donsp.dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
@@ -276,9 +278,8 @@ df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
 db.insert_table(table_name='priame_objednavky', df=df_concat)
 db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
 
-
-
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
+
 
 
 
