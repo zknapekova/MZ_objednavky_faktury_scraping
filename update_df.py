@@ -15,6 +15,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from urllib.request import urlretrieve
+import camelot
 
 
 logger = logging.getLogger(__name__)
@@ -277,6 +279,39 @@ df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
 
 db.insert_table(table_name='priame_objednavky', df=df_concat)
 db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+
+# NSP Trstena
+
+nsptrstena = PriameObjednavkyMail('nsptrstena')
+
+nsptrstena.df_all = nsptrstena_data_handling(weblink=dict_all['hornooravska nemocnica s poliklinikou trstena_2023']['zverejnovanie_objednavok_faktur_rozne'],
+                                             hosp_object=nsptrstena)
+
+if not nsptrstena.df_all.empty:
+    try:
+        df_db_nsptrstena = db.fetch_records(
+        "select * from objednavky.priame_objednavky where objednavatel='nsptrstena' and file like '%2023%'")
+        df_concat = (pd.concat([nsptrstena.df_all,
+                            df_db_nsptrstena[nsptrstena.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
+        if df_concat.empty:
+            raise DataNotAvailable('nsptrstena')
+        nsptrstena_search = pd.DataFrame(df_concat[nsptrstena.final_table_cols])
+        df_orig = pd.concat([df_orig, nsptrstena_search], ignore_index=True)
+
+        db.insert_table(table_name='priame_objednavky', df=df_concat)
+        db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+
+    except DataNotAvailable:
+        logger.info('No new data for nsptrstena')
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        logger.error('Inserting data to db failed for nsptrstena')
+        pass
+
+
+
+
+
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))
 

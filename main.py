@@ -1072,6 +1072,7 @@ df_all['predbeznapredmet objednaniacena bez dph'] = df_all['predbeznapredmet obj
 df_all['cena_extr'] = df_all['predbeznapredmet objednaniacena bez dph'].str.extract(r'(\d{1,}\.\d*)')
 df_all['predbeznapredmet objednaniacena bez dph'] = df_all['predbeznapredmet objednaniacena bez dph'].str.replace('\d{1,}\.\d*', ' ', regex=True)
 
+
 df_all.loc[(pd.isna(df_all['predbeznapredmet objednaniacena bez dph']) == False) & (pd.isna(df_all['predbeznacena bez dph']) == True),
                 'predbeznacena bez dph'] = df_all['cena_extr']
 
@@ -1092,12 +1093,54 @@ nsptrstena.df_all.drop_duplicates(inplace=True)
 
 nsptrstena_search = pd.DataFrame(nsptrstena.df_all[nsptrstena.final_table_cols])
 db.insert_table(table_name='priame_objednavky', df=nsptrstena.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil', 'predbezna', 'cena bez dph', 'predbeznapredmet objednaniacena bez dph', 'cena_extr']))
+db.insert_table(table_name='priame_objednavky', df=nsptrstena.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil', 'predbezna', 'cena bez dph', 'predbeznapredmet objednaniacena bez dph', 'cena_extr']))
+
+
 
 # 2023
 nsptrstena = PriameObjednavkyMail('nsptrstena')
 
 urlretrieve("https://www.nsptrstena.sk/uploads/fck/document/Objednavky/ROK%202023/Zoznam%20objednavok%202023(1).pdf",
             nsptrstena.hosp_path + current_date_time.strftime("%d-%m-%Y") + str(keysList[63]).replace(" ", "_") + '.pdf')
+
+
+db.insert_table(table_name='priame_objednavky', df=nsptrstena.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil',  'predbeznapredmet objednaniacena bez dph', 'cena_extr']))
+db_cloud.insert_table(table_name='priame_objednavky', df=nsptrstena.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil',  'predbeznapredmet objednaniacena bez dph', 'cena_extr']))
+
+# Kysucka nemocnica
+
+kysuckanemocnica = PriameObjednavkyMail('kysuckanemocnica')
+
+def kn_download_files(year_start, path):
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(chromedriver_path2, options=options)
+
+    year = year_start
+    while year <= current_date_time.year:
+
+        link = 'https://www.kysuckanemocnica.sk/zverejnene-dokumenty/objednavky/objednavky-'+str(year)
+
+        driver.get(link)
+        #all_tabs = driver.find_elements(By.XPATH, "//table[contains(@class, 'tabledok')]//a[contains(text(), 'Zdravotnícka technika') or contains(text(), 'Oddelenie IT')]")
+        all_tabs = driver.find_elements(By.XPATH, "//table[contains(@class, 'tabledok')]//a[contains(text(), '"+str(year)+"')]")
+
+        for element in all_tabs:
+            link = element.get_attribute('href')
+            try:
+                urlretrieve(link, path + current_date_time.strftime("%d-%m-%Y") + str(element.get_attribute('text'))+'.pdf')
+            except Exception as e:
+                print(link, element.get_attribute('text'))
+                print(traceback.format_exc())
+                continue
+        year += 1
+    driver.quit()
+
+kn_download_files(2017, kysuckanemocnica.hosp_path)
+
+for file_name in os.listdir(kysuckanemocnica.hosp_path):
+    print(file_name)
+    list_of_dfs = camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name), pages='all', flavor='lattice')
 
 
 
