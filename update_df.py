@@ -30,7 +30,7 @@ try:
     otl = OutlookTools(outlook)
     path = outlook.Folders['obstaravanie'].Folders['Doručená pošta'].Folders['Priame objednávky']
     logger.info(f"Outlook path loaded successfully")
-except Exception as e:
+except Exception:
     logger.error(traceback.format_exc())
     sys.exit()
 
@@ -39,7 +39,7 @@ try:
     logger.info(f"Connected to local database")
     db_cloud = ObjednavkyDB(objednavky_db_connection_cloud)
     logger.info(f"Connected to cloud database")
-except Exception as e:
+except Exception:
     logger.error(traceback.format_exc())
     sys.exit()
 
@@ -95,19 +95,18 @@ def get_data(objednavatel:str, dict_cena:dict, dict_key:str, mail_domain_extensi
         except Exception:
             logger.error(traceback.format_exc())
             logger.info(f'{obj.hosp} data insert to database failed')
-            pass
+
 
         move_all_files(source_path=obj.hosp_path, destination_path=obj.hosp_path_hist)
         logger.info(f'{obj.hosp} data load finished successfully')
 
     except DataNotAvailable as e:
         logger.info(e.message)
-        pass
 
     except Exception:
         logger.error(f"Error in hosp: {obj.hosp}")
         logger.error(traceback.format_exc())
-        pass
+
 
 get_data('fnspza', dict_cena={}, dict_key='fakultna nemocnica s poliklinikou zilina')
 
@@ -256,14 +255,11 @@ if max_date_web is not None:
 logger.info('donsp data load started')
 most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'donsp'].max()
 max_date_web = None
-#df_orig.loc[df_orig['datum'].dt.date == pd.Timestamp(year=2023, month=4, day=21).date(), 'datum'] = pd.Timestamp(year=2023, month=3, day=21)
-
-
 donsp = PriameObjednavkyMail('donsp')
+
 donsp.df_all = donsp_data_download(webpage=donsp_webpages['objednavky_2021_2023'], most_recent_date=most_recent_date, options=options)
 
 donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
-donsp.dodavatel_list = ['dodavatel_nazov', 'dodavatel_ico']
 donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin')
 
 # remove duplicates
@@ -273,26 +269,29 @@ df_db_donsp = db.fetch_records(
 df_concat = (pd.concat([donsp.df_all,
                         df_db_donsp[donsp.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'],
                                                                      keep=False))
-
 donsp_search = pd.DataFrame(df_concat[donsp.final_table_cols])
-df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
 
+df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
 db.insert_table(table_name='priame_objednavky', df=df_concat)
 db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
 
 # NSP Trstena
 
+# the script downloads pdf file from hopsital webpage using urlretrieve and extracts data from it
+logger.info('nsptrstena data load started')
 nsptrstena = PriameObjednavkyMail('nsptrstena')
 
-nsptrstena.df_all = nsptrstena_data_handling(weblink=dict_all['hornooravska nemocnica s poliklinikou trstena_2023']['zverejnovanie_objednavok_faktur_rozne'],
-                                             hosp_object=nsptrstena)
+nsptrstena.df_all = nsptrstena_data_handling(
+    weblink=dict_all['hornooravska nemocnica s poliklinikou trstena_2023']['zverejnovanie_objednavok_faktur_rozne'],
+    hosp_object=nsptrstena)
 
 if not nsptrstena.df_all.empty:
     try:
         df_db_nsptrstena = db.fetch_records(
-        "select * from objednavky.priame_objednavky where objednavatel='nsptrstena' and file like '%2023%'")
+            "select * from objednavky.priame_objednavky where objednavatel='nsptrstena' and file like '%" + datetime.now().year + "%'")
         df_concat = (pd.concat([nsptrstena.df_all,
-                            df_db_nsptrstena[nsptrstena.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
+                                df_db_nsptrstena[nsptrstena.df_all.columns]]).drop_duplicates(
+            ['popis', 'cena', 'datum', 'dodavatel'], keep=False))
         if df_concat.empty:
             raise DataNotAvailable('nsptrstena')
         nsptrstena_search = pd.DataFrame(df_concat[nsptrstena.final_table_cols])
@@ -301,12 +300,12 @@ if not nsptrstena.df_all.empty:
         db.insert_table(table_name='priame_objednavky', df=df_concat)
         db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
 
-    except DataNotAvailable:
-        logger.info('No new data for nsptrstena')
+    except DataNotAvailable(nsptrstena.hosp) as exp:
+        logger.info(exp.message)
     except Exception as e:
         logger.error(traceback.format_exc())
         logger.error('Inserting data to db failed for nsptrstena')
-        pass
+
 
 
 

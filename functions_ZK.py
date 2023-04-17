@@ -21,6 +21,7 @@ import logging
 import traceback
 from urllib.request import urlretrieve
 import camelot
+from schemas import PriameObjednavkyMail
 
 logger = logging.getLogger(__name__)
 
@@ -389,6 +390,7 @@ def split_dataframe(df, chunk_size = 10000):
     return chunks
 
 
+
 def donsp_table_clean(df, df_rename_dict, set_column_names=False):
     if set_column_names:
         df.drop(index=[df.shape[0] - 1], inplace=True)
@@ -453,19 +455,31 @@ def donsp_data_download(webpage:str, most_recent_date, options):
     return result_df
 
 
-def nsptrstena_data_handling(weblink, hosp_object, current_date_time=datetime.now(), keysList=keysList):
+def nsptrstena_data_handling(weblink: str, hosp_object: PriameObjednavkyMail,
+                             current_date_time: datetime = datetime.now(), keysList: list = keysList):
+    '''
+    The function first attempts to download a PDF file from the weblink provided. It then reads the PDF file and concatenates the data into a single DataFrame.
+    The function then applies several data cleaning operations to the DataFrame and returns the processed data in a pandas DataFrame object.
+    :param weblink: link to the webpage with data to be downloaded
+    :param hosp_object: hospital object from the class PriameObjednavkyMail
+    :param current_date_time: current date and time
+    :param keysList: list of keywords from dict_all
+    :return:
+    '''
 
     df_all = pd.DataFrame()
     try:
         urlretrieve(weblink,
-                    hosp_object.hosp_path + current_date_time.strftime("%d-%m-%Y") + str(keysList[63]).replace(" ", "_") + '.pdf')
+                    hosp_object.hosp_path + current_date_time.strftime("%d-%m-%Y") + str(keysList[63]).replace(" ",
+                                                                                                               "_") + '.pdf')
 
         for file_name in os.listdir(hosp_object.hosp_path):
             list_of_dfs = camelot.read_pdf(os.path.join(hosp_object.hosp_path, file_name), pages='all', flavor='stream',
                                            row_tol=20)
             for i in range(len(list_of_dfs)):
                 df = list_of_dfs[i].df
-                mask = df.applymap(lambda x: bool(re.search('(Str:.*)|(Vystavené objednávky za obdobie:)', str(x)))).any(axis=1)
+                mask = df.applymap(
+                    lambda x: bool(re.search('(Str:.*)|(Vystavené objednávky za obdobie:)', str(x)))).any(axis=1)
                 df.drop(df[mask].index, inplace=True)
                 df.reset_index(inplace=True, drop=True)
                 df.columns = df.iloc[0]
@@ -484,29 +498,36 @@ def nsptrstena_data_handling(weblink, hosp_object, current_date_time=datetime.no
         hosp_object.df_all = clean_str_col_names(df_all)
         hosp_object.df_all['datum'] = hosp_object.df_all['datumobjednania'].apply(get_dates)
 
-        hosp_object.df_all['predbeznapredmet objednaniacena bez dph'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph'].str.replace('\seur\s', ' ', regex=True)
+        hosp_object.df_all['predbeznapredmet objednaniacena bez dph'] = hosp_object.df_all[
+            'predbeznapredmet objednaniacena bez dph'].str.replace('\seur\s', ' ', regex=True)
 
-        hosp_object.df_all['cena_extr'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph'].str.extract(r'(\d{1,}\.\d*)')
-        hosp_object.df_all['predbeznapredmet objednaniacena bez dph'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph'].str.replace('\d{1,}\.\d*', ' ', regex=True)
+        hosp_object.df_all['cena_extr'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph'].str.extract(
+            r'(\d{1,}\.\d*)')
+        hosp_object.df_all['predbeznapredmet objednaniacena bez dph'] = hosp_object.df_all[
+            'predbeznapredmet objednaniacena bez dph'].str.replace('\d{1,}\.\d*', ' ', regex=True)
 
+        hosp_object.df_all.loc[(pd.isna(df_all['predbeznapredmet objednaniacena bez dph']) == False) & (
+                    pd.isna(hosp_object.df_all['predbeznacena bez dph']) == True),
+        'predbeznacena bez dph'] = hosp_object.df_all['cena_extr']
 
-        hosp_object.df_all.loc[(pd.isna(df_all['predbeznapredmet objednaniacena bez dph']) == False) & (pd.isna(hosp_object.df_all['predbeznacena bez dph']) == True),
-                        'predbeznacena bez dph'] = hosp_object.df_all['cena_extr']
-
-        hosp_object.df_all.loc[(pd.isna(hosp_object.df_all['predbeznapredmet objednaniacena bez dph']) == False) & (pd.isna(hosp_object.df_all['predmet objednania']) == True),
-                        'predmet objednania'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph']
+        hosp_object.df_all.loc[(pd.isna(hosp_object.df_all['predbeznapredmet objednaniacena bez dph']) == False) & (
+                    pd.isna(hosp_object.df_all['predmet objednania']) == True),
+        'predmet objednania'] = hosp_object.df_all['predbeznapredmet objednaniacena bez dph']
 
         hosp_object.df_all.loc[df_all['predbeznacena bez dph'] == '', 'predbeznacena bez dph'] = '0'
-        hosp_object.df_all['predbeznacena bez dph'] = hosp_object.df_all['predbeznacena bez dph'].str.replace('[(a-z)|\s]', '', regex=True)
-        hosp_object.df_all['cena']=hosp_object.df_all['predbeznacena bez dph'].astype(float)
+        hosp_object.df_all['predbeznacena bez dph'] = hosp_object.df_all['predbeznacena bez dph'].str.replace(
+            '[(a-z)|\s]', '', regex=True)
+        hosp_object.df_all['cena'] = hosp_object.df_all['predbeznacena bez dph'].astype(float)
 
         hosp_object.df_all = hosp_object.df_all.assign(cena_s_dph='nie', insert_date=datetime.now())
-        hosp_object.df_all.rename(columns = {'predmet objednania':'objednavka_predmet', 'objednavka':'objednavka_cislo'}, inplace=True)
+        hosp_object.df_all.rename(
+            columns={'predmet objednania': 'objednavka_predmet', 'objednavka': 'objednavka_cislo'}, inplace=True)
 
         hosp_object.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'zmluva', 'cena_s_dph']
         hosp_object.dodavatel_list = ['dodavatel']
         hosp_object.create_columns_w_dict(key='hornooravska nemocnica s poliklinikou trstena')
-        hosp_object.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil', 'predbeznapredmet objednaniacena bez dph', 'cena_extr'], inplace=True)
+        hosp_object.df_all.drop(columns=['predbeznacena bez dph', 'zmluva', 'datumobjednania', 'schvalil',
+                                         'predbeznapredmet objednaniacena bez dph', 'cena_extr'], inplace=True)
         hosp_object.df_all.drop_duplicates(inplace=True)
         move_all_files(source_path=hosp_object.hosp_path, destination_path=hosp_object.hosp_path_hist)
     except Exception as e:
@@ -514,4 +535,3 @@ def nsptrstena_data_handling(weblink, hosp_object, current_date_time=datetime.no
         logger.error('Data cleaning failed, needs to be handled manually')
         return df_all
     return hosp_object.df_all
-

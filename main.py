@@ -1126,11 +1126,11 @@ def kn_download_files(year_start, path):
         all_tabs = driver.find_elements(By.XPATH, "//table[contains(@class, 'tabledok')]//a[contains(text(), '"+str(year)+"')]")
 
         for element in all_tabs:
-            link = element.get_attribute('href')
+            down_link = element.get_attribute('href')
             try:
-                urlretrieve(link, path + current_date_time.strftime("%d-%m-%Y") + str(element.get_attribute('text'))+'.pdf')
+                urlretrieve(down_link, path + current_date_time.strftime("%d-%m-%Y") + str(element.get_attribute('text'))+'.pdf')
             except Exception as e:
-                print(link, element.get_attribute('text'))
+                print(down_link, element.get_attribute('text'))
                 print(traceback.format_exc())
                 continue
         year += 1
@@ -1138,9 +1138,44 @@ def kn_download_files(year_start, path):
 
 kn_download_files(2017, kysuckanemocnica.hosp_path)
 
+dict_tables = {}
 for file_name in os.listdir(kysuckanemocnica.hosp_path):
-    print(file_name)
-    list_of_dfs = camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name), pages='all', flavor='lattice')
+    if re.match('.*2022.*', file_name):
+        print(file_name)
+        try:
+            dict_tables[file_name]= camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name), pages='all', flavor='stream',
+                                                                  row_tol=10, split_text=True)
+        except Exception:
+            print(file_name)
+            print(traceback.format_exc())
+            continue
+import copy
+dict_tables2=copy.deepcopy(dict_tables)
 
+df_all = pd.DataFrame()
+
+for key in dict_tables.keys():
+    for i in range(len(dict_tables[key])):
+        df = dict_tables[key][i].df
+        print(key)
+        df = func.clean_str_cols(df)
+
+        mask = df.applymap(lambda cell: bool(
+            re.search('(identifikacne udaje.+)|(meno/nazov,.+)|(osoby/ obchodne.+)|(meno a priezvisko.+)|(pobytu fo.+)',
+                      cell))).any(axis=1)
+        df = df.drop(df[mask].index).reset_index(drop=True)
+        if not df.empty:
+            df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_bez_dph', 'cena_zahr_dph', 'cislo_zmluvy',
+                            'datum', 'dodavatel', 'schvalil']
+
+            for i in ['cena_zahr_dph', 'cena_bez_dph']:
+                df[i] = df[i].str.replace('(eur)|\s', '', regex=True).str.replace(',', '.', regex=True)
+                df.loc[df[i] == '', i] = '0'
+                df[i] = df[i].astype(float)
+
+            df_all = pd.concat([df_all, df], ignore_index=True)
+
+
+df = dict_tables2['13-04-2023 Kuchyňa - Júl 2022.pdf'][2].df
 
 
