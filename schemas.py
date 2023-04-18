@@ -2,13 +2,14 @@ import win32com.client  # pywin32 package needs to be installed
 import os
 import pandas as pd
 from config import *
-from functions_ZK import *
+import functions_ZK as func2
 import mysql.connector as pyo
 from mysql_config import objednavky_db_connection, objednavky_db_connection_cloud
 import copy
 from sqlalchemy import create_engine, text
 import pymysql
 import math
+import re
 import traceback
 import logging
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class PriameObjednavkyMail:
 
 
     def load(self):
-        self.all_tables_list = load_files(self.hosp_path)
+        self.all_tables_list = func2.load_files(self.hosp_path)
         self.all_tables_list_cleaned = copy.deepcopy(self.all_tables_list)
 
     def clean_tables(self):
@@ -41,7 +42,7 @@ class PriameObjednavkyMail:
             doc = self.all_tables_list_cleaned[i][-1]
             for key, value in doc.items():
                 doc[key] = func.clean_str_cols(doc[key])
-                doc[key] = clean_str_col_names(doc[key])
+                doc[key] = func2.clean_str_col_names(doc[key])
                 for col in doc[key].columns.values:
                     doc[key].drop(doc[key][(doc[key][col].astype(str).str.match(clean_table_regex) == True)].index,
                                   inplace=True)
@@ -56,7 +57,7 @@ class PriameObjednavkyMail:
                         doc[key].columns = doc[key].iloc[0]
                         doc[key] = doc[key].drop(doc[key].index[0])
                 if not doc[key].empty:
-                    doc[key] = clean_str_col_names(doc[key])
+                    doc[key] = func2.clean_str_col_names(doc[key])
                     self.all_tables_list_cleaned[i].append(doc[key])
 
     def data_check(self):
@@ -74,7 +75,7 @@ class PriameObjednavkyMail:
         print('File output.txt was saved.')
 
     def create_table(self, stand_column_names):
-        df = create_table(self.all_tables_list_cleaned, stand_column_names)
+        df = func2.create_table(self.all_tables_list_cleaned, stand_column_names)
         self.df_all = df.drop_duplicates()
         self.df_all.drop(self.df_all[pd.isna(self.df_all['objednavka_predmet']) & pd.isna(self.df_all['cena']) & pd.isna(
             self.df_all['datum'])].index, axis=0, inplace=True)

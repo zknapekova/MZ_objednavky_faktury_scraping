@@ -288,7 +288,7 @@ nsptrstena.df_all = nsptrstena_data_handling(
 if not nsptrstena.df_all.empty:
     try:
         df_db_nsptrstena = db.fetch_records(
-            "select * from objednavky.priame_objednavky where objednavatel='nsptrstena' and file like '%" + datetime.now().year + "%'")
+            "select * from objednavky.priame_objednavky where objednavatel='nsptrstena' and file like '%" + str(datetime.now().year) + "%'")
         df_concat = (pd.concat([nsptrstena.df_all,
                                 df_db_nsptrstena[nsptrstena.df_all.columns]]).drop_duplicates(
             ['popis', 'cena', 'datum', 'dodavatel'], keep=False))
@@ -300,7 +300,7 @@ if not nsptrstena.df_all.empty:
         db.insert_table(table_name='priame_objednavky', df=df_concat)
         db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
 
-    except DataNotAvailable(nsptrstena.hosp) as exp:
+    except DataNotAvailable as exp:
         logger.info(exp.message)
     except Exception as e:
         logger.error(traceback.format_exc())
@@ -309,7 +309,7 @@ if not nsptrstena.df_all.empty:
 
 
 
-
+tab= df_orig.groupby(['objednavatel']).count()
 
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))

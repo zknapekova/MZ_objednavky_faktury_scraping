@@ -25,6 +25,9 @@ chromedriver_path2 = 'C:\\Users\\knapekoz\\Documents\\Python Scripts\\chromedriv
 
 # Dictionaries ###
 
+dict_months = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'maj': 5, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'okt': 10,
+               'nov': 11, 'dec': 12}
+
 stand_column_names = {
     'objednavatel': ['nazov verejneho obstaravatela'],
     'kategoria': ['kategoria zakazky(tovar/stavebna praca/sluzba)', 'kategoria(tovar/stavebna praca/sluzba)', 'sluzba',
