@@ -1138,7 +1138,7 @@ def kn_download_files(year_start, path):
 
 kn_download_files(2017, kysuckanemocnica.hosp_path)
 
-
+# kuchyna
 dict_tables = {}
 for file_name in os.listdir(kysuckanemocnica.hosp_path):
 
@@ -1226,7 +1226,7 @@ kn_search = pd.DataFrame(kysuckanemocnica.df_all[kysuckanemocnica.final_table_co
 
 func.save_df(kn_search, 'kysucka_nemocnica_kuchyna.xlsx', kysuckanemocnica.hosp_path)
 
-
+# oddelenie IT
 dict_tables = {}
 for file_name in os.listdir(kysuckanemocnica.hosp_path):
 
@@ -1234,18 +1234,13 @@ for file_name in os.listdir(kysuckanemocnica.hosp_path):
         try:
             if re.match('.*Oddelenie IT.*', file_name):
                 dict_tables[file_name]= camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name), pages='all', flavor='stream',
-                                                                  row_tol=23, split_text=True)
-            # elif file_name in ('13-04-2023Kuchyňa - Február 2019.pdf', '13-04-2023Kuchyňa - Január 2019.pdf', '13-04-2023Kuchyňa - Marec 2019.pdf'):
-            #     dict_tables[file_name] = camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name),
-            #                                               pages='all', flavor='stream',
-            #                                               row_tol=8, split_text=True)
+                                                                  row_tol=30, split_text=True)
+
         except Exception:
             print(file_name)
             print(traceback.format_exc())
             continue
 
-import copy
-dict_tables2=copy.deepcopy(dict_tables)
 
 df_all = pd.DataFrame()
 
@@ -1263,30 +1258,22 @@ for key in dict_tables.keys():
             df['file'] = key
 
             if not df.empty:
-            #     if (key in ('13-04-2023Kuchyňa - Február 2022.pdf') and i in (0,3,4)) or (key in ('13-04-2023Kuchyňa - Marec 2022.pdf') and i in (0,2)):
-            #         df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_bez_dph', 'cena_zahr_dph',
-            #                       'datum', 'dodavatel', 'schvalil', 'file']
-            #     elif key == '13-04-2023Kuchyňa - Marec 2022.pdf' and i ==5:
-            #         df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_bez_dph', 'cena_zahr_dph', 'dodavatel', 'file']
-            #     elif key == '13-04-2023Kuchyňa - Máj 2019.pdf' and i ==2:
-            #         df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_zahr_dph', 'datum', 'dodavatel', 'schvalil', 'file']
-            #     elif key == '13-04-2023Kuchyňa - November 2022.pdf' and i ==0:
-            #         df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_bez_dph', 'cena_zahr_dph', 'cislo_zmluvy',
-            #                       'datum', 'dodavatel', 'file']
-            #     else:
-            #         df.columns = ['objednavka_cislo', 'objednavka_predmet', 'cena_bez_dph', 'cena_zahr_dph', 'cislo_zmluvy',
-            #                       'datum', 'dodavatel', 'schvalil', 'file']
-            #
-            #     for i in ['cena_zahr_dph', 'cena_bez_dph']:
-            #         if i in df.columns.values:
-            #             df[i] = df[i].str.replace('(eur)|\s', '', regex=True).str.replace(',', '.', regex=True)
-            #             df[i] = np.where(df[i].str.match(r'\d*\.\d*\.\d*'),
-            #                                           df[i].str.replace('\.', '', 1, regex=True),
-            #                                           df[i])
-            #             df.loc[df[i] == '', i] = '0'
-            #             df.loc[df[i] == '.', i] = '0'
-            #             df[i] = df[i].astype(float)
-
+                if (key in ('13-04-2023Oddelenie IT - December 2019.pdf', '13-04-2023Oddelenie IT - November 2019.pdf') and i ==0 ):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph',
+                                  'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Oddelenie IT - December 2022.pdf') and i ==0 ):
+                    df.columns = ['objednavka_cislo', 'prazdny_stlpec1', 'cena_zahr_dph', 'prazdny_stlpec2', 'datum',
+                                  'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Oddelenie IT - Jún 2021.pdf') and i ==0 ):
+                    df.columns = ['objednavka_cislo', 'prazdny_stlpec1', 'cena_zahr_dph', 'prazdny_stlpec2',
+                                  'datum', 'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Oddelenie IT - Marec 2019.pdf', '13-04-2023Oddelenie IT - Máj 2019.pdf') and i == 0 ) or \
+                        ((key in ('13-04-2023Oddelenie IT - Máj 2019.pdf') and i in (1,2) )):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph',
+                                  'datum', 'dodavatel', 'schvalil', 'file']
+                else:
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph', 'prazdny_stlpec2',
+                                  'datum', 'dodavatel', 'schvalil', 'file']
                 df_all = pd.concat([df_all, df], ignore_index=True)
     except Exception:
         print(traceback.format_exc())
@@ -1294,5 +1281,179 @@ for key in dict_tables.keys():
         break
 
 
+df = dict_tables['13-04-2023Oddelenie IT - November 2019.pdf'][0].df
 
+# datum
+df_all['datum_extr'] = df_all['cena_zahr_dph'].str.extract(r'(\d{2}\.\d{2}\.\d{4})')
+df_all.loc[pd.isna(df_all.datum), 'datum'] = df_all['datum_extr']
+df_all['datum'] = df_all['datum'].str.replace('[a-z]', '', regex=True)
+df_all['datum'] = df_all['datum'].apply(get_dates)
+
+# predmet objednavky
+df_all.loc[pd.isna(df_all.objednavka_predmet), 'objednavka_predmet'] = df_all['objednavka_cislo']
+df_all['objednavka_predmet'] = df_all['objednavka_predmet'].str.replace('mm-\d{4}-\d{3}', '', regex=True)
+
+# cena
+df_all['cena'] = df_all['cena_zahr_dph'].str.replace(r'(\d{1,}\.\d{2}\.\d{4})|([a-z])', '', regex=True).str.replace(',',
+                                                                                                                    '.',
+                                                                                                                    regex=True)
+df_all['cena_ext'] = df_all['cena'].str.extract(r'((?<=\s\s)\d+\s*\d*\.\d+)')
+df_all['cena'] = df_all['cena'].str.replace(r'((?<=\s\s)\d+\s*\d*\.\d+)', '', regex=True)
+df_all['cena'] = df_all['cena'].str.replace(r'\s', '', regex=True)
+df_all['cena_ext'] = df_all['cena_ext'].str.replace(r'\s', '', regex=True)
+df_all.loc[df_all['cena'] == '', ['cena', 'cena_ext']] = 0
+df_all['cena'] = df_all['cena'].astype(float)
+df_all['cena_ext'] = df_all['cena_ext'].astype(float)
+df_all.loc[pd.isna(df_all['cena_ext']) == False, 'cena'] = df_all['cena'] + df_all['cena_ext']
+df_all=df_all.assign(cena_s_dph='ano', insert_date=datetime.now())
+
+kysuckanemocnica.df_all = df_all
+kysuckanemocnica.dodavatel_list=['dodavatel']
+kysuckanemocnica.popis_list=['objednavka_predmet', 'objednavka_cislo',  'cena_s_dph']
+kysuckanemocnica.create_columns_w_dict('kysucka nemocnica s poliklinikou cadca')
+
+kysuckanemocnica.df_all.drop_duplicates(inplace=True)
+
+kn_search = pd.DataFrame(kysuckanemocnica.df_all[kysuckanemocnica.final_table_cols])
+
+func.save_df(kn_search, 'kysucka_nemocnica_oddelenie_it.xlsx', kysuckanemocnica.hosp_path)
+
+# zdravotnícka technika
+
+dict_tables = {}
+for file_name in os.listdir(kysuckanemocnica.hosp_path):
+
+        print(file_name)
+        try:
+            if re.match('.*Zdravotnícka technika.*', file_name):
+                dict_tables[file_name]= camelot.read_pdf(os.path.join(kysuckanemocnica.hosp_path, file_name), pages='all', flavor='stream',
+                                                                  row_tol=30, split_text=True)
+
+        except Exception:
+            print(file_name)
+            print(traceback.format_exc())
+            continue
+
+df_all = pd.DataFrame()
+
+for key in dict_tables.keys():
+    try:
+        for i in range(len(dict_tables[key])):
+            df = dict_tables[key][i].df
+            print(key)
+            df = func.clean_str_cols(df)
+
+            mask = df.applymap(lambda cell: bool(
+                re.search('(.*celkova.*)|(bez dph.*)|(.*ratane dph.*)|(identifikacne udaje.+)|(objedna\s*neho.*)|(meno/nazov,.+)|(osoby/ obchodne.+)|(.+miesto podnikania.+)|(meno a priezvisko.+)|(pobytu fo.+)',
+                          cell))).any(axis=1)
+            df = df.drop(df[mask].index).reset_index(drop=True)
+            df['file'] = key
+
+            if not df.empty:
+                if (key in ('13-04-2023 Zdravotnícka technika - Február 2022.pdf') and i ==1 ) or (key == '13-04-2023 Zdravotnícka technika - Október 2022.pdf' and i ==0)\
+                        or (key == '13-04-2023Zdravotnícka technika - August 2019.pdf' and i in (0,1))\
+                        or (key == '13-04-2023Zdravotnícka technika - December 2022.pdf' and i ==1)\
+                        or (key == '13-04-2023Zdravotnícka technika - Január 2020.pdf' and i ==1)\
+                        or (key == '13-04-2023Zdravotnícka technika - Január 2022.pdf' and i ==1)\
+                        or (key == '13-04-2023Zdravotnícka technika - Júl 2021.pdf' and i ==2)\
+                        or (key == '13-04-2023Zdravotnícka technika - Júl 2022.pdf' and i ==1) or \
+                        (key == '13-04-2023Zdravotnícka technika - Máj 2019.pdf' and i ==2) or \
+                        (key == '13-04-2023Zdravotnícka technika - Máj 2022.pdf' and i in (1,2)) or \
+                        (key == '13-04-2023Zdravotnícka technika - November 2019.pdf' and i ==1) or \
+                        (key == '13-04-2023Zdravotnícka technika - November 2021.pdf' and i ==1)\
+                        or (key == '13-04-2023Zdravotnícka technika - Október 2019.pdf' and i ==0)\
+                        or (key == '13-04-2023Zdravotnícka technika - Október 2021.pdf' and i ==0):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph',  'datum',
+                                  'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Zdravotnícka technika - Apríl 2018.pdf') and i == 1 ) or \
+                        (key in '13-04-2023Zdravotnícka technika - Jún 2018.pdf' and i == 1) or \
+                        (key in ('13-04-2023Zdravotnícka technika - Marec 2018.pdf') and i in (1,2)) or \
+                        (key in ('13-04-2023Zdravotnícka technika - Marec 2019.pdf') and i ==1) or \
+                        (key in ('13-04-2023Zdravotnícka technika - Máj 2018.pdf') and i ==1) or \
+                        (key in ('13-04-2023Zdravotnícka technika - Október 2017.pdf') and i == 1) or \
+                        (key in ('13-04-2023Zdravotnícka technika - Október 2018.pdf') and i ==1):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet',  'cena_zahr_dph', 'datum',
+                                  'dodavatel', 'schvalil', 'file']
+                elif (key == '13-04-2023Zdravotnícka technika - August 2018.pdf' and i in (0,1))\
+                        or (key=='13-04-2023Zdravotnícka technika - December 2022.pdf' and i == 2)\
+                        or (key=='13-04-2023Zdravotnícka technika - február 2023.pdf' and i == 2):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph', 'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Zdravotnícka technika - September 2019.pdf') and i == 0 ):
+                    df.columns = ['objednavka_cislo', 'prazdny_stlpec1', 'cena_zahr_dph', 'prazdny_stlpec2',
+                                      'datum', 'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Zdravotnícka technika - September 2019.pdf') and i == 1 ):
+                    df.columns = ['objednavka_cislo', 'prazdny_stlpec1', 'cena_zahr_dph', 'datum', 'dodavatel', 'schvalil', 'file']
+                elif (key in ('13-04-2023Zdravotnícka technika - September 2019.pdf') and i == 2 )\
+                        or ( key == '13-04-2023Zdravotnícka technika - September 2022.pdf' and i ==1):
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph', 'datum', 'dodavatel', 'schvalil', 'file']
+                else:
+                    df.columns = ['objednavka_cislo', 'objednavka_predmet', 'prazdny_stlpec1', 'cena_zahr_dph', 'prazdny_stlpec2',
+                                      'datum', 'dodavatel', 'schvalil', 'file']
+
+                # for i in ['cena_zahr_dph', 'cena_bez_dph']:
+                #     if i in df.columns.values:
+                #         df[i] = df[i].str.replace('(eur)|\s', '', regex=True).str.replace(',', '.', regex=True)
+                #         df[i] = np.where(df[i].str.match(r'\d*\.\d*\.\d*'),
+                #                                       df[i].str.replace('\.', '', 1, regex=True),
+                #                                       df[i])
+                #         df.loc[df[i] == '', i] = '0'
+                #         df.loc[df[i] == '.', i] = '0'
+                #         df[i] = df[i].astype(float)
+
+                df_all = pd.concat([df_all, df], ignore_index=True)
+    except Exception:
+        print(traceback.format_exc())
+        df2=df
+        break
+
+func.save_df(df_all, 'kysucka_nemocnica_zdravotnicka_technika.xlsx', kysuckanemocnica.hosp_path)
+
+df = dict_tables['13-04-2023Zdravotnícka technika - Apríl 2018.pdf'][0].df
+
+
+df_all = func.load_df('kysucka_nemocnica_zdravotnicka_technika.xlsx', kysuckanemocnica.hosp_path)
+
+# date
+df_all['datum_extr'] = df_all['cena_zahr_dph'].str.extract('([a-z]+\s\d{1,2}\.\s[a-z]+\s\d{4})', expand=False)
+df_all['datum_extr2'] = df_all['cena_zahr_dph'].str.extract(r'(\d{2}\.\d{2}\.\d{3,})')
+df_all['datum_extr2'] = df_all['datum_extr2'].str.replace('202', '2023')
+df_all.loc[pd.isna(df_all['datum_extr'])==False, 'datum']=df_all['datum_extr']
+df_all.loc[pd.isna(df_all['datum_extr2'])==False, 'datum']=df_all['datum_extr2']
+
+df_all['datum'] = df_all['datum'].str.replace(r'(?<=\d{4})\s[a-z]+\,*\s\d{1,2}\.\s[a-z]+\s\d{4}', '', regex=True)
+df_all['datum'] = df_all['datum'].str.replace('(?<=\d{4})\s[a-z]+\s\d{1,2}\.\s[a-z]+\s\d{4}', '', regex=True)
+df_all['datum'] = df_all['datum'].str.replace('(?<=\d{4})\s\d{1,2}\.\d{1,2}\.\d{4}', '', regex=True)
+df_all['datum'] = df_all['datum'].apply(get_dates)
+
+# cena
+df_all['cena_zahr_dph'] = df_all['cena_zahr_dph'].str.replace('([a-z]+\s\d{1,2}\.\s[a-z]+\s\d{4})', '', regex=True)
+df_all['cena_zahr_dph'] = df_all['cena_zahr_dph'].str.replace('eur', '')
+
+df_all['cena_ext'] = df_all['cena_zahr_dph'].str.extract(r'((?<=\s\s)\d+\s*\d*\,\d+)')
+df_all['cena_zahr_dph'] = df_all['cena_zahr_dph'].str.replace(r'(?<=\s\s)\d+\s*\d*\,\d+', '', regex=True)
+
+df_all['cena2'] = df_all['cena_zahr_dph'].str.extract('(\d{0,3}\s*\d{1,3}\,\d{2})')
+df_all['cena2']=df_all['cena2'].str.replace(',', '.', regex=True).str.replace('\s', '', regex=True)
+df_all['cena_ext']=df_all['cena_ext'].str.replace(',', '.', regex=True).str.replace('\s', '', regex=True)
+df_all['cena2']=df_all['cena2'].astype(float)
+df_all['cena_ext']=df_all['cena_ext'].astype(float)
+# TODO
+
+df_all.loc[(df_all['cena_zahr_dph'].str.contains('[a-z]')==True), 'poznamka_k_cene']=df_all['cena_zahr_dph'].str.strip()
+df_all.assign(cena_s_dph='ano', insert_date=datetime.now())
+
+# kysuckanemocnica.df_all = df_all
+# kysuckanemocnica.dodavatel_list=['dodavatel']
+# kysuckanemocnica.popis_list=['objednavka_predmet', 'objednavka_cislo',  'cena_s_dph', 'poznamka_k_cene', 'schvalil']
+# kysuckanemocnica.create_columns_w_dict('kysucka nemocnica s poliklinikou cadca')
+#
+# kysuckanemocnica.df_all.drop_duplicates(inplace=True)
+#
+# kn_search = pd.DataFrame(kysuckanemocnica.df_all[kysuckanemocnica.final_table_cols])
+
+
+
+#388
+
+df = df_all[['cena_zahr_dph', 'cena2']]
 

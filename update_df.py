@@ -15,6 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException
 from urllib.request import urlretrieve
 import camelot
 
@@ -96,7 +97,6 @@ def get_data(objednavatel:str, dict_cena:dict, dict_key:str, mail_domain_extensi
             logger.error(traceback.format_exc())
             logger.info(f'{obj.hosp} data insert to database failed')
 
-
         move_all_files(source_path=obj.hosp_path, destination_path=obj.hosp_path_hist)
         logger.info(f'{obj.hosp} data load finished successfully')
 
@@ -177,6 +177,130 @@ get_data('vusch',
          dict_key='vychodoslovensky ustav srdcovych a cievnych chorob as')
 
 
+class Locators:
+    def __init__(self, hosp):
+        if hosp == 'fntn':
+            self.table = (By.XPATH, "//div[contains(@id, 'content')]//table")
+            self.next_button = (By.XPATH, "//div[contains(@class, 'next')]//a[contains(text(), 'Nasled')]")
+        elif hosp == 'donsp':
+            self.table = (By.XPATH, "//div[contains(@class, 'responsive-table')]//table")
+            self.next_button = (By.XPATH, "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]")
+
+class DataHandling:
+    def __init__(self, hosp):
+        if hosp == 'fntn':
+            self.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cislo zmluvy', 'schvalil', 'cena_s_dph']
+            self.dodavatel_list = 'default' # function will use default value in class PriameObjednavkyMail
+            self.drop_list = ['ico dodavatela', 'schvalil', 'mesto dodavatela', 'psc dodavatela', 'adresa dodavatela',
+                     'datum vyhotovenia', 'cislo zmluvy', 'cena s dph (EUR)']
+
+
+
+
+class GetDataPage:
+    def __init__(self, driver, url):
+        self.driver = driver
+        self.url = url
+
+    def load_web_page(self):
+        self.driver.get(self.url)
+
+    def get_table(self, locator, wait_time=10):
+        try:
+            element = WebDriverWait(self.driver, wait_time).until(EC.visibility_of_element_located(locator)).get_attribute(
+            "outerHTML")
+            return element
+        except NoSuchElementException:
+            logger.error(f"Element with locator: {locator} was not found")
+            logger.error(traceback.format_exc())
+
+    def click_next_button(self, locator, wait_time=2):
+        try:
+            WebDriverWait(driver, wait_time).until(EC.element_to_be_clickable(locator)).click()
+        except ElementClickInterceptedException:
+            logger.error(f"Element with locator: {locator} was not clickable")
+            logger.error(traceback.format_exc())
+
+
+class BaseProcedure:
+    def __init__(self, hosp: str, url: str, driver):
+        self.driver = driver
+        self.loc = Locators(hosp)
+        self.get_data_page = GetDataPage(driver, url)
+        self.obj = PriameObjednavkyMail(hosp)
+        self.data_handling = DataHandling(hosp)
+
+    def download_data(self, date_col: str, most_recent_date: datetime):
+        self.most_recent_date=most_recent_date
+        self.get_data_page.load_web_page()
+        table_html = self.get_data_page.get_table(locator=self.loc.table)
+        self.obj.df_all = pd.read_html(table_html)[0]
+        self.obj.df_all['datum'] = self.obj.df_all[date_col].apply(get_dates)
+        max_date_web = self.obj.df_all['datum'].max()
+
+        if max_date_web is not None:
+            while most_recent_date <= max_date_web:
+                try:
+                    self.get_data_page.click_next_button(locator=self.loc.next_button)
+                    sleep(4)
+                    next_table_lst = self.get_data_page.get_table(locator=self.loc.table)
+                    next_table = pd.read_html(next_table_lst)[0]
+                    next_table['datum'] = next_table[date_col].apply(get_dates)
+                    self.obj.df_all = pd.concat([self.obj.df_all, next_table], ignore_index=True)
+                    max_date_web = next_table['datum'].max()
+                    sleep(3)
+                except Exception:
+                    logger.error(traceback.format_exc())
+                    driver.quit()
+                    print('Retrieving data failed')
+                    break
+            driver.quit()
+            self.obj.df_all.drop(self.obj.df_all[self.obj.df_all['datum'] < most_recent_date].index, inplace=True)
+
+
+    def clean_data(self, function, key):
+        self.obj.df_all = function(self.obj.df_all)
+
+        if self.data_handling.popis_list and self.data_handling.popis_list != 'default':
+            self.obj.popis_list = self.data_handling.popis_list
+
+        if self.data_handling.dodavatel_list and self.data_handling.dodavatel_list != 'default':
+            self.obj.dodavatel_list = self.data_handling.dodavatel_list
+
+        self.obj.create_columns_w_dict(key=key)
+        if self.data_handling.dodavatel_list:
+            self.obj.df_all.drop(columns=self.data_handling.drop_list, inplace=True)
+
+        # remove duplicates
+
+        df_db = db.fetch_records(
+            "select * from objednavky.priame_objednavky where objednavatel='"+ self.obj.hosp +"' and datum = '{}'; ".format(
+                self.most_recent_date.date().strftime('%Y-%m-%d')))
+        df_concat = (pd.concat([self.obj.df_all,
+                        df_db[self.obj.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'], keep=False))
+
+        logger.info('{} rows retrieved'.format(df_concat.shape[0]))
+        self.df_search = pd.DataFrame(df_concat[self.obj.final_table_cols])
+        # df_orig = pd.concat([df_orig, fntn_search], ignore_index=True)
+        # db.insert_table(table_name='priame_objednavky', df=df_concat)
+        # db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+        # logger.info('Data saved to database')
+
+
+# FNTN
+logger.info('fntn data load started')
+
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = webdriver.Chrome(chromedriver_path2, options=options)
+fntn = BaseProcedure('fntn', url=dict_all['fakultna nemocnica trencin']['objednavky_link'], driver=driver)
+
+fntn.download_data(date_col='Dátum vyhotovenia', most_recent_date=df_orig['datum'][df_orig['objednavatel'] == 'fntn'].max())
+fntn.clean_data(fntn_data_cleaning, key='fakultna nemocnica trencin')
+
+
+
+
 # FNTN
 logger.info('fntn data load started')
 most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'fntn'].max()
@@ -188,8 +312,7 @@ try:
     driver = webdriver.Chrome(chromedriver_path2, options=options)
     driver.get(dict_all['fakultna nemocnica trencin']['objednavky_link'])
 
-    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                                                                   "//div[contains(@id, 'content')]//table"))).get_attribute(
+    table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located(loc.fntn_table)).get_attribute(
         "outerHTML")
     table_pd = pd.read_html(table_html)[0]
     table_pd['datum'] = table_pd['Dátum vyhotovenia'].apply(get_dates)
@@ -197,16 +320,15 @@ try:
 except Exception as e:
     logger.error(traceback.format_exc())
     driver.quit()
-    pass
+
 
 if max_date_web is not None:
     while most_recent_date <= max_date_web:
         try:
-            WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
-                                                                       "//div[contains(@class, 'next')]//a[contains(text(), 'Nasled')]"))).click()
+            WebDriverWait(driver, 2).until(EC.element_to_be_clickable(loc.fntn_next_button)).click()
             sleep(4)
             next_table_lst = WebDriverWait(driver, 10).until(
-                EC.visibility_of_element_located((By.XPATH, "//div[contains(@id, 'content')]//table"))).get_attribute(
+                EC.visibility_of_element_located(loc.fntn_table)).get_attribute(
                 "outerHTML")
             next_table = pd.read_html(next_table_lst)[0]
             next_table['datum'] = next_table['Dátum vyhotovenia'].apply(get_dates)
@@ -251,7 +373,6 @@ if max_date_web is not None:
         pass
 
 # DONSP
-
 logger.info('donsp data load started')
 most_recent_date = df_orig['datum'][df_orig['objednavatel'] == 'donsp'].max()
 max_date_web = None
@@ -262,18 +383,29 @@ donsp.df_all = donsp_data_download(webpage=donsp_webpages['objednavky_2021_2023'
 donsp.popis_list = ['objednavka_predmet', 'objednavka_cislo', 'cena_s_dph']
 donsp.create_columns_w_dict(key='dolnooravska nemocnica s poliklinikou mudr l nadasi jegeho dolny kubin')
 
-# remove duplicates
-df_db_donsp = db.fetch_records(
-    "select * from objednavky.priame_objednavky where objednavatel='donsp' and datum = '{}'; ".format(
-        most_recent_date.date().strftime('%Y-%m-%d')))
-df_concat = (pd.concat([donsp.df_all,
-                        df_db_donsp[donsp.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'],
-                                                                     keep=False))
-donsp_search = pd.DataFrame(df_concat[donsp.final_table_cols])
+if not donsp.df_all.empty:
+    try:
+        df_db_donsp = db.fetch_records(
+            "select * from objednavky.priame_objednavky where objednavatel='donsp' and datum = '{}'; ".format(
+                most_recent_date.date().strftime('%Y-%m-%d')))
+        df_concat = (pd.concat([donsp.df_all,
+                                df_db_donsp[donsp.df_all.columns]]).drop_duplicates(['popis', 'cena', 'datum', 'dodavatel'],
+                                                                                    keep=False))
+        if df_concat.empty:
+            raise DataNotAvailable('nsptrstena')
 
-df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
-db.insert_table(table_name='priame_objednavky', df=df_concat)
-db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+        donsp_search = pd.DataFrame(df_concat[donsp.final_table_cols])
+
+        df_orig = pd.concat([df_orig, donsp_search], ignore_index=True)
+        db.insert_table(table_name='priame_objednavky', df=df_concat)
+        db_cloud.insert_table(table_name='priame_objednavky', df=df_concat)
+        logger.info('Data saved to database')
+    except DataNotAvailable as exp:
+        logger.info(exp.message)
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        logger.error('Inserting data to db failed for nsptrstena')
+
 
 # NSP Trstena
 
@@ -309,7 +441,7 @@ if not nsptrstena.df_all.empty:
 
 
 
-tab= df_orig.groupby(['objednavatel']).count()
+
 
 
 func.save_df(df=df_orig, name=os.path.join(os.getcwd(), 'priame_objednavky_all.pkl'))

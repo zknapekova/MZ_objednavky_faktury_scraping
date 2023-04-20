@@ -276,8 +276,8 @@ def get_dates(date_string: str):
             return pd.Timestamp(year=int('20' + date_string.split('/')[2]), month=int(date_string.split('/')[1]),
                                 day=int(date_string.split('/')[0]))
         # example: 05.09.2022-09.09.2022
-        elif re.match(r'\d+\.\d+\.20\d{2}.*-.*\d+\.\d+\.20\d{2}.*', date_string):
-            date = date_string.split('-')[0].strip()
+        elif re.match(r'\d+\.\d+\.20\d{2}.*-*.*\d+\.\d+\.20\d{2}.*', date_string):
+            date = date_string.split(' ')[0].strip()
             return pd.Timestamp(year=int(date.split('.')[2]), month=int(date.split('.')[1]),
                                 day=int(date.split('.')[0]))
         # example: 2.-6.10.
