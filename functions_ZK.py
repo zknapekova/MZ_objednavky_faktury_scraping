@@ -300,6 +300,13 @@ def get_dates(date_string: str):
             year = re.search('\d{4}', date_string).group(0)
             month = dict_months[date_string.split(' ')[1][:3]]
             return pd.Timestamp(year=int(year), month=int(month), day=int(day))
+        # example streda 6. februar 2019
+        elif re.match(r'[a-z]+\s\d+\.[a-z]+\s\d{4}', date_string):
+            day = re.search('\d{1,}\.', date_string).group(0).strip().replace('.', '')
+            year = re.search('\d{4}', date_string).group(0)
+            month = dict_months[date_string.split(' ')[2][:3]]
+            return pd.Timestamp(year=int(year), month=int(month), day=int(day))
+
         else:
             return np.nan
 
@@ -369,7 +376,6 @@ def fntn_data_cleaning(df):
     df = df.assign(file='web', insert_date=datetime.now(), cena_s_dph='ano')
     df.rename(columns={'cislo objednavky': 'objednavka_cislo', 'nazov dodavatela': 'dodavatel_nazov',
                        'popis': 'objednavka_predmet'}, inplace=True)
-
     df['dodavatel_ico'] = df['ico dodavatela'].str.replace('\..*', '', regex=True)
     df['cena'] = df['cena s dph (EUR)'].astype(float)
     df.drop_duplicates(inplace=True)
@@ -397,25 +403,27 @@ def split_dataframe(df, chunk_size = 10000):
     return chunks
 
 
-
-def donsp_table_clean(df, df_rename_dict, set_column_names=False):
-    if set_column_names:
-        df.drop(index=[df.shape[0] - 1], inplace=True)
-        df.dropna(axis=1, how='all', inplace=True)
+def donsp_table_clean(df, **kwargs):
+    if kwargs['set_column_names'] == True:
         df.columns = df.iloc[0]
         df.drop(df.index[0], inplace=True)
+        mask = df.applymap(lambda x: bool(re.search('(Strana.*)|(Dodávateľ)', str(x)))).any(axis=1)
+        df.drop(df[mask].index, inplace=True)
+        df.dropna(axis=1, how='all', inplace=True)
 
-    df.rename(columns=df_rename_dict, inplace=True)
+    df.rename(columns=kwargs['df_rename_dict'], inplace=True)
 
     df = func.clean_str_cols(df)
-    dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
-                 '': '0',
-                 '\.+': '.'}
-    df = str_col_replace(df, 'cena', dict_cena)
-    df['cena'] = df['cena'].astype(float)
-    df['datum'] = df['datum'].str.replace('29\.2\.', '27.2.', regex=True).str.replace('31\.04\.', '30.04.', regex=True).\
+    if 'cena' in df:
+        dict_cena = {"[a-z]|'|\s|[\(\)]|\+|\*+": "", ',-': '', ',$': '', ',+': '.', '/.*': '', '\.-': '', '-': '',
+                     '': '0', '\.+': '.'}
+        df = str_col_replace(df, 'cena', dict_cena)
+        df['cena'] = df['cena'].astype(float)
+    df['datum'] = df['datum'].str.replace('29\.2\.', '27.2.', regex=True).str.replace('31\.04\.', '30.04.', regex=True). \
         str.replace('31\.06\.', '30.06.', regex=True)
     df['datum'] = df['datum'].apply(get_dates)
+
+    df = df.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
     return df
 
 def donsp_data_download(webpage:str, most_recent_date, options):
@@ -430,11 +438,12 @@ def donsp_data_download(webpage:str, most_recent_date, options):
                         'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
 
         max_date_web = result_df['datum'].max()
+        print('max date on web:', max_date_web)
 
     except Exception as e:
         logger.error(traceback.format_exc())
         driver.quit()
-        pass
+        return result_df
 
     if max_date_web is not None:
         while most_recent_date<=max_date_web:
@@ -446,6 +455,7 @@ def donsp_data_download(webpage:str, most_recent_date, options):
                 table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
                                             "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
                 table_next = pd.read_html(table_html)[0]
+                print(table_next.iloc[0])
                 table_next = donsp_table_clean(table_next, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
                             'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
                 result_df = pd.concat([result_df, table_next], ignore_index=True)
@@ -454,6 +464,8 @@ def donsp_data_download(webpage:str, most_recent_date, options):
 
             except Exception:
                 print(traceback.format_exc())
+                #break
+                return table_next
                 break
     driver.quit()
     result_df.drop(result_df[result_df['datum'] < most_recent_date].index, inplace=True)
