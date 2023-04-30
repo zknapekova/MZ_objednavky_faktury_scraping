@@ -127,3 +127,19 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+mysql_config.py
+priame_objednavky_all.pkl
+functionss.py
+.idea/vcs.xml
+.idea/MZ_objednavky_faktury_scraping.iml
+.idea/modules.xml
+.idea/misc.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/inspectionProfiles/profiles_settings.xml
+config.py
+log.txt
+
+
+first_donwloads.py
+data/nsptrstena/28-04-2023hornooravska_nemocnica_s_poliklinikou_trstena.pdf
+config.py

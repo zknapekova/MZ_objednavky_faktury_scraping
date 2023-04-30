@@ -4,8 +4,8 @@ import functionss as func
 # Constants
 clean_table_regex = r'(vypracovala*\s*:.*)|(schvalil.*:.*)|(.*riaditel$)|(.*referent .*)|(vysvetlivky:)|(^v stlpci.*uviest.*)|(.*@.*\.sk.*)|(^informacia o.*)|(^kontakt:.*)|(dna: \d+.*)|(judr.*)|(ing.*)|(mgr.*)|(datum zaciatku platnosti)|(^vyhotovil.*)|(anna kasmanova)|(^- za lekaren$)|(^- za referat prevadzky a udrzby$)'
 
-# Paths ###
-source_path = 'C:\\Users\\knapekoz\\OneDrive - health.gov.sk\\\Zverejnovanie zmluv linky_subjektyCO.xlsx'
+# Paths
+source_path = 'C:\\Users\\zknap\\Desktop\\MZ SR\\Zverejnovanie zmluv linky_subjektyCO.xlsx'
 
 data_path = os.getcwd() + "\\data\\"
 if not os.path.exists(data_path):
@@ -19,9 +19,9 @@ historical_data_path = os.path.join(data_path + "historical_data\\")
 if not os.path.exists(historical_data_path):
     os.mkdir(historical_data_path)
 
-vo_path = "C:\\Users\\knapekoz\\health.gov.sk\\OSCM - Posudzovanie žiadostí\\"
+vo_path = "C:\\Users\\zknap\\Desktop\\MZ SR"
 chromedriver_path = os.path.join(vo_path, 'chromedriver_win32/chromedriver.exe')
-chromedriver_path2 = 'C:\\Users\\knapekoz\\Documents\\Python Scripts\\chromedriver\\chromedriver.exe'
+chromedriver_path2 = 'C:\\Users\\zknap\\Desktop\\Python Scripts\\chromedriver.exe'
 
 # Dictionaries ###
 

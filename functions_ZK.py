@@ -172,32 +172,12 @@ def FNsP_BB_objednavky(link:str, search_by: str, value: str, name: str):
     driver.quit()
     return ['ok', result_df]
 
-def create_standardized_table(key, table, cols, columns_to_insert):
-    '''
-
-    :param key: name of the hospital/institution used in dictionary
-    :param table: dataframe containing data
-    :param cols: list of columns to be used in the result table
-    :param columns_to_insert: values from dictionary
-    :return: pandas dataframe
-    '''
-    objednavky = pd.DataFrame(columns=cols)
-
-    # insert scraped data
-    for i in objednavky.columns.values:
-        for j in range(len(table.columns.values)):
-            if dict[key][i] == table.columns.values[j]:
-                print(dict[key][i], table.columns.values[j])
-                objednavky[i] = table[table.columns[j]]
-
-    # insert data from dictionary
-    for col_name in objednavky.columns.values:
-        if col_name in columns_to_insert:
-            objednavky[col_name]=dict[key][col_name]
-
-    return objednavky
 
 def clean_str_col_names(df):
+    '''
+    The function cleans column names in the given data frame.
+    :param df: name of pandas data frame
+    '''
     df.columns = [unidecode(str(x).lower().strip().replace('\n', '').replace('  ', ' ')) for x in df.columns]
     return df
 
@@ -233,7 +213,13 @@ def load_files(data_path):
     return all_tables
 
 
-def create_table(list_of_tables, dictionary):
+def create_table(list_of_tables: list, dictionary: dict):
+    '''
+    The function iterates through each file in the provided list, then scans each sheet and table to locate columns whose names match the keys in the dictionary.
+    If a match is found, the column name is replaced with the corresponding value in the dictionary.
+    :param list_of_tables: name of the list
+    :param dictionary: name of the dictionary
+    '''
     final_table = pd.DataFrame(columns=list(dictionary.keys()))
     for i in range(len(list_of_tables)):  # all excel files
         for j in range(2, len(list_of_tables[i])):  # all sheets
@@ -258,6 +244,9 @@ def create_table(list_of_tables, dictionary):
 
 
 def get_dates(date_string: str):
+    '''
+    The function attempts to extract date from the input string nad returns pandas Timestamp or np.nan.
+    '''
     if pd.isna(date_string) == False:
         date_string = str(date_string).strip()
         date_string = date_string.replace(',', '.')
@@ -312,7 +301,10 @@ def get_dates(date_string: str):
 
 
 def fnspza_data_cleaning(input_table):
-    ### data cleaning ###
+    '''
+    The function cleans fnspza data.
+    :param input_table: name of pandas data frame
+    '''
 
     fnspza_all2 = func.clean_str_cols(input_table)
 
@@ -370,6 +362,10 @@ def fnspza_data_cleaning(input_table):
 
 
 def fntn_data_cleaning(df):
+    '''
+    The function cleans fnspza data.
+    :param df: name of pandas data frame
+    '''
     df = func.clean_str_cols(df)
     df = clean_str_col_names(df)
 
@@ -381,7 +377,11 @@ def fntn_data_cleaning(df):
     df.drop_duplicates(inplace=True)
     return df
 
-def move_all_files(source_path, destination_path):
+
+def move_all_files(source_path: str, destination_path: str) -> None:
+    '''
+    The function moves all files from the source to the destination directory.
+    '''
     for file_name in os.listdir(source_path):
         source = source_path + file_name
         destination = destination_path + file_name
@@ -390,12 +390,23 @@ def move_all_files(source_path, destination_path):
             shutil.move(source, destination)
             print('Moved:', file_name)
 
-def str_col_replace(table, column, dictionary):
+def str_col_replace(table, column: str, dictionary: dict):
+    '''
+    The function replaces values in a specified column of a pandas data frame based on a given dictionary.
+    :param table: name of table
+    :param column: name of column
+    :param dictionary: {string_to_replace: new value}
+    '''
     for original, replacement in dictionary.items():
         table[column] = table[column].replace(original, replacement, regex=True)
     return table
 
-def split_dataframe(df, chunk_size = 10000):
+def split_dataframe(df, chunk_size:int = 10000) -> list:
+    '''
+    The function breaks up given data frame into smaller chunks.
+    :param df: name of data frame
+    :param chunk_size:
+    '''
     chunks = list()
     num_chunks = len(df) // chunk_size + 1
     for i in range(num_chunks):
@@ -403,7 +414,11 @@ def split_dataframe(df, chunk_size = 10000):
     return chunks
 
 
-def donsp_table_clean(df, **kwargs):
+def donsp_table_cleaning(df, **kwargs):
+    '''
+    The function cleans donsp data.
+    :param df: name of pandas data frame
+    '''
     if kwargs['set_column_names'] == True:
         df.columns = df.iloc[0]
         df.drop(df.index[0], inplace=True)
@@ -425,53 +440,6 @@ def donsp_table_clean(df, **kwargs):
 
     df = df.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
     return df
-
-def donsp_data_download(webpage:str, most_recent_date, options):
-    try:
-        driver = webdriver.Chrome(chromedriver_path2, options=options)
-        driver.get(webpage)
-
-        table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                    "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
-        result_df = pd.read_html(table_html)[0]
-        result_df = donsp_table_clean(result_df, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
-                        'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
-
-        max_date_web = result_df['datum'].max()
-        print('max date on web:', max_date_web)
-
-    except Exception as e:
-        logger.error(traceback.format_exc())
-        driver.quit()
-        return result_df
-
-    if max_date_web is not None:
-        while most_recent_date<=max_date_web:
-            try:
-                sleep(4)
-                WebDriverWait(driver, 2).until(EC.element_to_be_clickable((By.XPATH,
-                    "//div[contains(@class, 'responsive-table')]//table[contains(@class, 'container')]//tr[contains(@class, 'foot')]//a[contains(text(), '»')]"))).click()
-
-                table_html = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH,
-                                            "//div[contains(@class, 'responsive-table')]//table"))).get_attribute("outerHTML")
-                table_next = pd.read_html(table_html)[0]
-                print(table_next.iloc[0])
-                table_next = donsp_table_clean(table_next, set_column_names=True, df_rename_dict={'Číslo objednávky': 'objednavka_cislo',
-                            'Dodávateľ': 'dodavatel_nazov', 'IČO': 'dodavatel_ico', 'Suma': 'cena', 'Predmet objednávky': 'objednavka_predmet', 'Dátum zverejnenia': 'datum'})
-                result_df = pd.concat([result_df, table_next], ignore_index=True)
-                max_date_web = table_next['datum'].max()
-                sleep(3)
-
-            except Exception:
-                print(traceback.format_exc())
-                #break
-                return table_next
-                break
-    driver.quit()
-    result_df.drop(result_df[result_df['datum'] < most_recent_date].index, inplace=True)
-    result_df.drop(columns=['Meno schvaľujúceho'], inplace=True)
-    result_df = result_df.assign(cena_s_dph='nie', file='web', insert_date=datetime.now())
-    return result_df
 
 
 def nsptrstena_data_handling(weblink: str, hosp_object: PriameObjednavkyMail,
@@ -554,3 +522,7 @@ def nsptrstena_data_handling(weblink: str, hosp_object: PriameObjednavkyMail,
         logger.error('Data cleaning failed, needs to be handled manually')
         return df_all
     return hosp_object.df_all
+
+
+
+
